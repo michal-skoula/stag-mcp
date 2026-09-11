@@ -33,6 +33,22 @@ class User extends Authenticatable // implements MustVerifyEmail
     use Notifiable;
 
     /**
+     * Whether this user holds a STAG token we believe is still usable.
+     *
+     * STAG never reports a ticket's expiry, so stag_token_valid_until is our own
+     * estimate from the login flow. A null estimate is treated as still valid and
+     * left for STAG to reject.
+     */
+    public function hasValidStagToken(): bool
+    {
+        if (blank($this->stag_token)) {
+            return false;
+        }
+
+        return $this->stag_token_valid_until === null || $this->stag_token_valid_until->isFuture();
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

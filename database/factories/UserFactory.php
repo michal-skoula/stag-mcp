@@ -45,6 +45,17 @@ class UserFactory extends Factory
     }
 
     /**
+     * A user whose STAG ticket has lapsed.
+     */
+    public function withExpiredStagToken(string $token = 'stag-ticket'): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'stag_token' => $token,
+            'stag_token_valid_until' => now()->subMinute(),
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

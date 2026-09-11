@@ -4,8 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Clients\StagClient;
 use App\Exceptions\StagException;
-use App\Models\User;
-use Illuminate\Container\Attributes\CurrentUser;
+use App\Mcp\Concerns\RequiresStagLogin;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Carbon;
@@ -24,6 +23,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly]
 class ListNotificationsTool extends Tool
 {
+    use RequiresStagLogin;
+
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Foznameni
 
     /**
@@ -65,13 +66,11 @@ class ListNotificationsTool extends Tool
 
     /**
      * Handle the tool request.
+     *
+     * @throws StagException
      */
-    public function handle(Request $request, #[CurrentUser('sanctum')] ?User $user = null): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
-        if ($user === null) {
-            return Response::error('No authenticated user. The MCP client must send a bearer token.');
-        }
-
         $validated = $request->validate([
             'show_read' => ['boolean', 'nullable'],
             'newer_than' => ['date_format:Y-m-d', 'nullable'],
@@ -89,11 +88,7 @@ class ListNotificationsTool extends Tool
                 ->getTimestampMs();
         }
 
-        try {
-            $notifications = (new StagClient($user))->get('oznameni/list', $params);
-        } catch (StagException $e) {
-            return Response::error($e->getMessage());
-        }
+        $notifications = $stag->get('oznameni/list', $params);
 
         return Response::structured([
             'count' => count($notifications),

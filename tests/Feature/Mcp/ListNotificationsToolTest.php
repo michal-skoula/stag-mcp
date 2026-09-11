@@ -118,6 +118,17 @@ it('tells the user to authorize when no ticket is stored', function () {
     Http::assertNothingSent();
 });
 
+it('refuses a lapsed ticket without troubling STAG', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withExpiredStagToken()->create())
+        ->tool(ListNotificationsTool::class)
+        ->assertHasErrors()
+        ->assertSee('expired or been revoked');
+
+    Http::assertNothingSent();
+});
+
 it('tells the user to re-authorize when STAG rejects the ticket', function () {
     Http::fake([STAG_LIST => Http::response('Unauthorized', 401)]);
 
