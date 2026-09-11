@@ -34,6 +34,17 @@ class UserFactory extends Factory
     }
 
     /**
+     * A user who has authorized IS-STAG and holds a live ticket.
+     */
+    public function withStagToken(string $token = 'stag-ticket'): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'stag_token' => $token,
+            'stag_token_valid_until' => now()->addMinutes(30),
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

@@ -15,6 +15,10 @@ return new class extends Migration
             $table->text('stag_token')
                 ->nullable()
                 ->after('remember_token');
+
+            $table->timestamp('stag_token_valid_until')
+                ->nullable()
+                ->after('stag_token');
         });
     }
 
@@ -24,7 +28,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('ticket');
+            $table->dropColumn(['stag_token', 'stag_token_valid_until']);
         });
     }
 };
