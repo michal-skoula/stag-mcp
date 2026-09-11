@@ -2,13 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
+use App\Console\Concerns\ResolvesMcpUser;
 use Illuminate\Console\Command;
-
-use function Laravel\Prompts\select;
 
 class McpTokenCommand extends Command
 {
+    use ResolvesMcpUser;
+
     protected $signature = 'mcp:token
                             {name=Claude Code : Label for the client the token is for}
                             {--user= : Email of the user to mint for, when the app has more than one}';
@@ -17,11 +17,9 @@ class McpTokenCommand extends Command
 
     public function handle(): int
     {
-        $user = $this->resolveUser();
+        $user = $this->resolveMcpUser();
 
         if ($user === null) {
-            $this->components->error('No users exist yet. Register one first.');
-
             return self::FAILURE;
         }
 
@@ -45,23 +43,5 @@ class McpTokenCommand extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function resolveUser(): ?User
-    {
-        if ($email = $this->option('user')) {
-            return User::where('email', $email)->first();
-        }
-
-        $users = User::orderBy('id')->get();
-
-        return match (true) {
-            $users->isEmpty() => null,
-            $users->count() === 1 => $users->first(),
-            default => $users->firstWhere('email', select(
-                label: 'Which user is this token for?',
-                options: $users->pluck('email', 'email')->all(),
-            )),
-        };
     }
 }

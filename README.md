@@ -55,10 +55,10 @@ that from the CLI.
 
 Two credentials are involved and they are easy to confuse:
 
-| | What it is | Where it lives |
-|---|---|---|
-| MCP client → this app | Sanctum bearer token | `personal_access_tokens` |
-| this app → STAG | STAG ticket, sent as `WSCOOKIE` | `users.stag_token`, encrypted |
+|                       | What it is                      | Where it lives                |
+|-----------------------|---------------------------------|-------------------------------|
+| MCP client → this app | Sanctum bearer token            | `personal_access_tokens`      |
+| this app → STAG       | STAG ticket, sent as `WSCOOKIE` | `users.stag_token`, encrypted |
 
 STAG never reports when a ticket expires, so `users.stag_token_valid_until` is our
 own estimate from the login flow, and a tool checks it before spending a request.
@@ -89,8 +89,15 @@ Register the tool in `App\Mcp\Servers\StagMcpServer`.
 ## Testing
 
 ```bash
-php artisan test          # everything
-php artisan mcp:inspector mcp/stag   # poke the server by hand
+php artisan test        # everything
+php artisan mcp:inspect # poke the server by hand in the MCP Inspector
 ```
 
-The inspector needs an `Authorization: Bearer <token>` header set in its UI.
+`mcp:inspect` mints a token named *MCP Inspector*, then starts the inspector with
+that token already in the `Authorization` header, so tools resolve a real user and
+a real STAG ticket. Pass `--user` to pick the account and `--print` to get the
+command without running it.
+
+The `mcp:inspector` command from laravel/mcp opens the same UI on the same route
+but sends no credentials, so every call there fails on *No authenticated user*
+until you paste a token into its Authentication panel yourself.
