@@ -1,58 +1,96 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# IS-STAG MCP
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+An MCP server exposing [IS-STAG](https://is-stag.zcu.cz) to AI clients, built on
+[Laravel MCP](https://laravel.com/docs/mcp).
 
-## About Laravel
+STAG authorization happens once in the browser and the resulting ticket is stored
+against your account, so clients never handle it. Clients authenticate to this app
+with a Sanctum bearer token instead.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Setup
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer setup
+composer dev
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+`composer dev` runs the app on <http://127.0.0.1:8000>, and the MCP endpoint is a
+route on it at `/mcp/stag`. There is no separate process to start.
 
-## Contributing
+Then, in the browser:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+1. Register at `/register`.
+2. On the dashboard, click **Authorize** under *Authorize IS-STAG*. Tick
+   **Keep token valid for longer** unless you enjoy re-authorizing, because a
+   standard STAG ticket dies after 30 minutes while a long one lasts 90 days.
 
-## Code of Conduct
+## Connecting Claude Code
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+`.mcp.json` is committed and already points at the local server. It reads the
+bearer token from your environment, so nothing secret is in the repo:
 
-## Security Vulnerabilities
+```json
+"is-stag": {
+    "type": "http",
+    "url": "${STAG_MCP_URL:-http://127.0.0.1:8000}/mcp/stag",
+    "headers": { "Authorization": "Bearer ${STAG_MCP_TOKEN}" }
+}
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Mint a token and export it:
 
-## License
+```bash
+php artisan mcp:token
+# export STAG_MCP_TOKEN='1|...'
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Restart Claude Code afterwards, since `.mcp.json` is read at startup. Check it
+connected with `/mcp`.
+
+The dashboard has the same thing with a copy button, and takes a name per client
+so you can revoke one without disturbing the others. `mcp:token "OpenWebUI"` does
+that from the CLI.
+
+## Authentication, both layers
+
+Two credentials are involved and they are easy to confuse:
+
+| | What it is | Where it lives |
+|---|---|---|
+| MCP client → this app | Sanctum bearer token | `personal_access_tokens` |
+| this app → STAG | STAG ticket, sent as `WSCOOKIE` | `users.stag_token`, encrypted |
+
+STAG never reports when a ticket expires, so `users.stag_token_valid_until` is our
+own estimate from the login flow, and a tool checks it before spending a request.
+
+## Writing a tool
+
+Most of STAG's `rest2` surface answers anonymous callers, so a plain tool just
+injects `StagClient` and calls it. For a service that demands a login, use the
+trait and implement `handleForStagUser()` instead of `handle()`:
+
+```php
+class ListNotificationsTool extends Tool
+{
+    use RequiresStagLogin;
+
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    {
+        return Response::structured($stag->get('oznameni/list'));
+    }
+}
+```
+
+The trait resolves the user, refuses a missing or lapsed token with a message
+saying how to fix it, and turns any `StagException` into a tool error.
+
+Register the tool in `App\Mcp\Servers\StagMcpServer`.
+
+## Testing
+
+```bash
+php artisan test          # everything
+php artisan mcp:inspector mcp/stag   # poke the server by hand
+```
+
+The inspector needs an `Authorization: Bearer <token>` header set in its UI.

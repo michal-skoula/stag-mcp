@@ -6,6 +6,13 @@
                 "artisan",
                 "boost:mcp"
             ]
+        },
+        "is-stag": {
+            "type": "http",
+            "url": "${STAG_MCP_URL:-http://127.0.0.1:8000}/mcp/stag",
+            "headers": {
+                "Authorization": "Bearer ${STAG_MCP_TOKEN}"
+            }
         }
     }
 }
