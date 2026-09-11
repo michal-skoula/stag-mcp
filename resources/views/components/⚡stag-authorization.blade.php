@@ -8,14 +8,14 @@ new class extends Component {
     /** @var string STAG login URL. todo: resolve URL dynamically based on selected school. */
     protected const string STAG_AUTH_BASE_URL = 'https://stag-ws.zcu.cz/ws/login';
 
-    /** @var bool Only support the primary login method set by admins. For ZČU this does nothing. */
-    protected const bool MAIN_LOGIN_METHOD_ONLY = false;
+    /** @var bool Only support the primary login method set by STAG admins. */
+    protected const bool MAIN_LOGIN_METHOD_ONLY = true;
 
     /** @var string Named route handling STAG token storage. */
     protected const string CALLBACK_ROUTE = 'stag.authorize';
 
     /** @var bool URL Parameter flag for longer-lived token (ticket). */
-    public bool $longLivedToken = false;
+    public bool $longLivedToken = true;
 
 
     public function mount(): void
