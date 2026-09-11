@@ -4,7 +4,8 @@
     </p>
 
     <div class="mt-5 space-y-3">
-{{--        <a href="{{ url('/') }}" class="block text-sm font-medium underline underline-offset-4">Authorize IS STAG</a>--}}
+
+        <livewire:stag-authorization/>
 
         <form method="POST" action="{{ route('logout') }}">
             @csrf

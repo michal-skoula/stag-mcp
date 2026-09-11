@@ -1,3 +1,5 @@
+Before talking to the user, always load the `/unslop` skill.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
