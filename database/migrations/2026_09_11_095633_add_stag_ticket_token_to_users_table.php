@@ -12,11 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('ticket')
-                ->after('remember_token');
-            $table->dateTime('ticket_valid_until')
+            $table->text('stag_token')
                 ->nullable()
-                ->after('ticket');
+                ->after('remember_token');
+            $table->dateTime('stag_token_valid_until')
+                ->nullable()
+                ->after('stag_token');
         });
     }
 
