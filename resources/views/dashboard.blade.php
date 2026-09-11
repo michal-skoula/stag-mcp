@@ -7,6 +7,8 @@
 
         <livewire:stag-authorization/>
 
+        <livewire:mcp-token/>
+
         <form method="POST" action="{{ route('logout') }}">
             @csrf
 
