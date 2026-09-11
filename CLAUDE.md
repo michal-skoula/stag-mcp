@@ -1,5 +1,6 @@
 - Before talking to the user, always load the `/unslop` skill.
 - Do not self-attribute in github commits or PRs. Avoid any @Co-Authored by, Claude session keys etc. in commits.
+- `/stag-quirks` exists, use it.
 
 <laravel-boost-guidelines>
 === foundation rules ===

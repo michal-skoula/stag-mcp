@@ -35,11 +35,9 @@ class ListNotificationsTool extends Tool
         return [
             'show_read' => $schema->boolean()
                 ->description('Also show read notifications. Returns only unread by default.')
-                ->default(false)
-                ->nullable(),
+                ->default(false),
             'newer_than' => $schema->string()
-                ->description('Only show notifications after a given date. YYYY-MM-DD format.')
-                ->nullable(),
+                ->description('Only show notifications after a given date. YYYY-MM-DD format.'),
         ];
     }
 
@@ -57,9 +55,9 @@ class ListNotificationsTool extends Tool
                     'id' => $schema->integer()->description('STAG notification id.'),
                     'subject' => $schema->string()->description('Subject line.'),
                     'message' => $schema->string()->description('Body of the notification.'),
-                    'sent_at' => $schema->string()->description('ISO-8601 timestamp, or null.')->nullable(),
-                    'read_at' => $schema->string()->description('ISO-8601 timestamp, or null when unread.')->nullable(),
-                    'url' => $schema->string()->description('Link STAG attached to the notification, or null.')->nullable(),
+                    'sent_at' => $schema->anyOf([$schema->string()])->description('ISO-8601 timestamp, or null.')->nullable(),
+                    'read_at' => $schema->anyOf([$schema->string()])->description('ISO-8601 timestamp, or null when unread.')->nullable(),
+                    'url' => $schema->anyOf([$schema->string()])->description('Link STAG attached to the notification, or null.')->nullable(),
                 ])),
         ];
     }
