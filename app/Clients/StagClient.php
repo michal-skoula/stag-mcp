@@ -8,6 +8,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -31,36 +32,38 @@ final class StagClient
     public function __construct(private readonly User $user) {}
 
     /**
-     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
      * @return array<array-key, mixed>
      *
      * @throws StagException
      */
-    public function get(string $path, array $params = []): array
+    public function get(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $request): mixed => $request->get($path, $this->withDefaults($params)));
+        return $this->send(fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
     }
 
     /**
-     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $data  Request's JSON body
      * @return array<array-key, mixed>
      *
      * @throws StagException
      */
-    public function post(string $path, array $params = []): array
+    public function post(string $path, array $data = []): array
     {
-        return $this->send(fn (PendingRequest $request): mixed => $request->post($path, $this->withDefaults($params)));
+        return $this->send(fn (PendingRequest $r) => $r->post($path, $this->withDefaults($data)));
     }
 
     /**
-     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
      * @return array<array-key, mixed>
      *
      * @throws StagException
      */
-    public function put(string $path, array $params = []): array
+    public function put(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $request): mixed => $request->put($path, $this->withDefaults($params)));
+        return $this->send(fn (PendingRequest $r) => $r
+            ->withOptions(['query' => $this->toQueryString($this->withDefaults($query))])
+            ->put($path));
     }
 
     /**
@@ -78,7 +81,7 @@ final class StagClient
     private function send(callable $call): array
     {
         try {
-            return $call($this->request())->throw()->json();
+            return $call($this->request())->throw()->json() ?? [];
         } catch (ConnectionException $e) {
             throw StagException::unreachable($e);
         } catch (RequestException $e) {
@@ -103,16 +106,35 @@ final class StagClient
     }
 
     /**
+     * STAG reads list parameters as repeated keys (notiIdno=1&notiIdno=2). PHP's
+     * http_build_query would write notiIdno[0]=1, which the Java side ignores.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    private function toQueryString(array $query): string
+    {
+        $pairs = [];
+
+        foreach ($query as $key => $value) {
+            foreach (Arr::wrap($value) as $item) {
+                $pairs[] = rawurlencode((string) $key).'='.rawurlencode((string) $item);
+            }
+        }
+
+        return implode('&', $pairs);
+    }
+
+    /**
      * Most rest2 services answer anonymous callers, so the token is attached only
      * when there is one. An empty WSCOOKIE would be rejected outright.
      */
     private function request(): PendingRequest
     {
-        $request = Http::baseUrl(self::BASE_URL)->acceptJson();
+        $r = Http::baseUrl(self::BASE_URL)->acceptJson();
 
         return $this->hasStagToken()
-            ? $request->withHeaders(['Cookie' => "WSCOOKIE={$this->user->stag_token}"])
-            : $request;
+            ? $r->withHeaders(['Cookie' => "WSCOOKIE={$this->user->stag_token}"])
+            : $r;
     }
 
     private function hasStagToken(): bool

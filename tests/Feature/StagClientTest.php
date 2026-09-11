@@ -53,3 +53,24 @@ it('reports an unreachable server', function () {
     expect(fn () => (new StagClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
         ->toThrow(StagException::class, 'Could not reach');
 });
+
+it('expands array query values into repeated keys', function () {
+    Http::fake([ANY_STAG => Http::response([])]);
+
+    (new StagClient(User::factory()->withStagToken()->create()))
+        ->put('oznameni/precteno', ['notiIdno' => [1, 2, 3]]);
+
+    // Asserting on the URL, not $request['notiIdno']. Laravel runs the recorded
+    // query through parse_str, which keeps only the last value and would pass
+    // even if the expansion wrote notiIdno[0]=1.
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), 'oznameni/precteno?notiIdno=1&notiIdno=2&notiIdno=3'));
+});
+
+it('returns an empty array when STAG sends no body', function () {
+    Http::fake([ANY_STAG => Http::response('', 204)]);
+
+    $result = (new StagClient(User::factory()->withStagToken()->create()))
+        ->put('oznameni/precteno', ['notiIdno' => [1]]);
+
+    expect($result)->toBe([]);
+});

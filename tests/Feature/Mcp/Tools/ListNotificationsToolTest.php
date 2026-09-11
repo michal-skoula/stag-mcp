@@ -32,6 +32,19 @@ function stagNotification(array $overrides = []): array
     ], $overrides);
 }
 
+// The gate itself is covered in TraitRequiresStagLoginTest. This is the one case that
+// proves this tool sits behind it, which that file cannot show: it passes either way.
+// Tool::handle() is not abstract, so a tool defining its own would skip the gate silently.
+it('refuses a caller with no STAG ticket', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(ListNotificationsTool::class)
+        ->assertHasErrors();
+
+    Http::assertNothingSent();
+});
+
 it('asks only for unread notifications by default', function () {
     Http::fake([STAG_LIST => Http::response([])]);
 
@@ -50,16 +63,6 @@ it('asks for every notification when show_read is set', function () {
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['jenNeprectene'] === 'false');
-});
-
-it('sends the ticket as the WSCOOKIE cookie', function () {
-    Http::fake([STAG_LIST => Http::response([])]);
-
-    StagMcpServer::actingAs(User::factory()->withStagToken('a-ticket')->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertOk();
-
-    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'WSCOOKIE=a-ticket'));
 });
 
 it('converts newer_than to a midnight millisecond timestamp', function () {
@@ -105,55 +108,6 @@ it('returns an empty list without erroring', function () {
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"count":0');
-});
-
-it('tells the user to authorize when no ticket is stored', function () {
-    Http::fake();
-
-    StagMcpServer::actingAs(User::factory()->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertHasErrors()
-        ->assertSee('has not authorized IS-STAG');
-
-    Http::assertNothingSent();
-});
-
-it('refuses a lapsed ticket without troubling STAG', function () {
-    Http::fake();
-
-    StagMcpServer::actingAs(User::factory()->withExpiredStagToken()->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertHasErrors()
-        ->assertSee('expired or been revoked');
-
-    Http::assertNothingSent();
-});
-
-it('tells the user to re-authorize when STAG rejects the ticket', function () {
-    Http::fake([STAG_LIST => Http::response('Unauthorized', 401)]);
-
-    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertHasErrors()
-        ->assertSee('expired or been revoked');
-});
-
-it('does not leak the STAG error body into the response', function () {
-    Http::fake([STAG_LIST => Http::response('K volání této služby je potřeba se přihlásit', 401)]);
-
-    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertHasErrors()
-        ->assertDontSee('potřeba se přihlásit');
-});
-
-it('reports an unexpected status without detail', function () {
-    Http::fake([STAG_LIST => Http::response('boom', 500)]);
-
-    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class)
-        ->assertHasErrors()
-        ->assertSee('unexpected HTTP 500');
 });
 
 it('rejects a newer_than that is not a date', function () {
