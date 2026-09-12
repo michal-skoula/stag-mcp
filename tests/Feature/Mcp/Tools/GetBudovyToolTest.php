@@ -1,8 +1,10 @@
 <?php
 
+use App\Mcp\Enums\Campus;
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetBudovyTool;
 use App\Models\User;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 
 const STAG_GET_BUDOVY = 'stag-ws.zcu.cz/ws/services/rest2/mistnost/getBudovy*';
@@ -80,6 +82,124 @@ it('returns an empty list without erroring', function () {
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"count":0');
+});
+
+it('filters by city, case-insensitively', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'obec' => 'Plzeň']),
+        stagBudova(['zkrBudovy' => 'CD', 'obec' => 'Cheb']),
+    ]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetBudovyTool::class, ['city' => 'cheb'])
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"CD"')
+        ->assertDontSee('"code":"UL"');
+});
+
+it('accepts a city STAG has not been seen with yet', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'obec' => 'Plzeň']),
+    ]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetBudovyTool::class, ['city' => 'Ostrava'])
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee('"count":0');
+});
+
+it('filters by a raw campus code', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'lokalita' => 'B']),
+        stagBudova(['zkrBudovy' => 'AM', 'lokalita' => 'S']),
+    ]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetBudovyTool::class, ['campus' => 'b'])
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"UL"');
+});
+
+it('filters by a campus label the same way as its raw code', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'lokalita' => 'B']),
+        stagBudova(['zkrBudovy' => 'AM', 'lokalita' => 'S']),
+    ]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetBudovyTool::class, ['campus' => Campus::B->label()])
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"UL"');
+});
+
+it('filters by an address substring across street, house number, and city', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'ulice' => 'Univerzitní', 'cisloUlice' => '2762/22']),
+        stagBudova(['zkrBudovy' => 'AM', 'ulice' => 'Americká', 'cisloUlice' => '2222/42']),
+    ]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetBudovyTool::class, ['address' => '2762'])
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"UL"');
+});
+
+it('defaults the city filter to the user\'s saved preference', function () {
+    $user = User::factory()->create();
+    $user->preferences()->create(['city' => 'Cheb']);
+
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'obec' => 'Plzeň']),
+        stagBudova(['zkrBudovy' => 'CD', 'obec' => 'Cheb']),
+    ]])]);
+
+    StagMcpServer::actingAs($user)
+        ->tool(GetBudovyTool::class)
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"CD"')
+        ->assertDontSee('"code":"UL"');
+});
+
+it('lets an explicit city filter override the saved preference', function () {
+    $user = User::factory()->create();
+    $user->preferences()->create(['city' => 'Cheb']);
+
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [
+        stagBudova(['zkrBudovy' => 'UL', 'obec' => 'Plzeň']),
+        stagBudova(['zkrBudovy' => 'CD', 'obec' => 'Cheb']),
+    ]])]);
+
+    StagMcpServer::actingAs($user)
+        ->tool(GetBudovyTool::class, ['city' => 'Plzeň'])
+        ->assertOk()
+        ->assertSee('"count":1')
+        ->assertSee('"code":"UL"')
+        ->assertDontSee('"code":"CD"');
+});
+
+it('mentions the saved preference in the schema description when one exists', function () {
+    $user = User::factory()->create();
+    $user->preferences()->create(['city' => 'Cheb']);
+
+    $this->actingAs($user, 'sanctum');
+
+    $schema = (new GetBudovyTool)->schema(new JsonSchemaTypeFactory);
+
+    expect($schema['city']->toArray()['description'])->toContain("Defaults to 'Cheb' from user preference");
+});
+
+it('does not mention a default city in the schema description without a saved preference', function () {
+    $this->actingAs(User::factory()->create(), 'sanctum');
+
+    $schema = (new GetBudovyTool)->schema(new JsonSchemaTypeFactory);
+
+    expect($schema['city']->toArray()['description'])->not->toContain('Defaults to');
 });
 
 it('errors when there is no authenticated user', function () {
