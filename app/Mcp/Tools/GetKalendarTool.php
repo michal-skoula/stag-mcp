@@ -8,7 +8,7 @@ use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
 use App\Mcp\Enums\CalendarPeriod;
 use App\Mcp\Enums\Weekday;
-use App\Mcp\Enums\WeekParity;
+use App\Mcp\Enums\WeekType;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Carbon;
@@ -386,7 +386,7 @@ class GetKalendarTool extends Tool
      */
     private function weekParityLabel(string $code): string
     {
-        return WeekParity::tryFrom($code)?->label() ?? $code;
+        return WeekType::tryFrom($code)?->label() ?? $code;
     }
 
     private function toIsoDate(?string $value): ?string

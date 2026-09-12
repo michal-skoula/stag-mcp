@@ -1,6 +1,6 @@
 <?php
 
-use App\Mcp\Enums\Campus;
+use App\Mcp\Enums\Location;
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetBudovyTool;
 use App\Models\User;
@@ -60,7 +60,7 @@ it('reshapes the STAG payload into compact english fields', function () {
         ->assertOk()
         ->assertSee('"count":1')
         ->assertSee('"code":"UL"')
-        ->assertSee('"campus":"X"')
+        ->assertSee('"campus":"Není známa"')
         ->assertSee('"address":{"city":"Plzeň"');
 });
 
@@ -130,7 +130,7 @@ it('filters by a campus label the same way as its raw code', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['campus' => Campus::B->label()])
+        ->tool(GetBudovyTool::class, ['campus' => Location::Univerzitni->label()])
         ->assertOk()
         ->assertSee('"count":1')
         ->assertSee('"code":"UL"');

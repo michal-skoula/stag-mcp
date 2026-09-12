@@ -4,8 +4,8 @@ namespace App\Mcp\Tools;
 
 use App\Clients\StagClient;
 use App\Exceptions\StagException;
-use App\Mcp\Enums\Campus;
 use App\Mcp\Enums\City;
+use App\Mcp\Enums\Location;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -47,7 +47,7 @@ class GetBudovyTool extends Tool
         return [
             'city' => $schema->string()->description($cityDescription),
             'campus' => $schema->string()
-                ->description('Filter by campus/location code. Accepts a raw code ('.implode(', ', Campus::values()).') or its label. Labels are placeholders until the codes are decoded, see the Campus enum. Not validated — any string is matched.'),
+                ->description('Filter by campus or part of town. Accepts a name ('.implode(', ', Location::labels()).') or its raw STAG code ('.implode(', ', Location::values()).'). Names match without regard to case or accents. Not validated — any string is matched.'),
             'address' => $schema->string()
                 ->description('Case-insensitive substring match against the street, house number, and city.'),
         ];
@@ -69,7 +69,6 @@ class GetBudovyTool extends Tool
                     //       and it could provide better data as time goes on. probably needs a separate tool tho.
                     //       purely an idea for now.
                     'code' => $schema->string()->description('Building abbreviation, e.g. "UL".'),
-                    // FIXME: campus is Campus::label(), a placeholder for the raw code until the codes are decoded.
                     'campus' => $schema->string()->description('Campus/location label. Not yet decoded — currently the raw STAG code.'),
                     'map_url' => $schema->anyOf([$schema->string()])->description('Directions link, or null.')->nullable(),
                     'address' => $schema->object([
@@ -164,7 +163,7 @@ class GetBudovyTool extends Tool
         }
 
         $filter = trim($filter);
-        $resolved = Campus::tryFrom(strtoupper($filter)) ?? Campus::fromLabel($filter);
+        $resolved = Location::tryFrom(strtoupper($filter)) ?? Location::fromLabel($filter);
 
         return $resolved !== null
             ? $lokalita === $resolved->value
@@ -197,7 +196,7 @@ class GetBudovyTool extends Tool
     {
         return [
             'code' => $row['zkrBudovy'],
-            'campus' => Campus::tryFrom($row['lokalita'])?->label() ?? $row['lokalita'],
+            'campus' => Location::tryFrom($row['lokalita'])?->label() ?? $row['lokalita'],
             'map_url' => $row['url'] ?? null,
             'address' => [
                 'city' => $row['obec'] ?? null,
