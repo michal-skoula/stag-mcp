@@ -2,6 +2,9 @@
 - Do not self-attribute in github commits or PRs. Avoid any @Co-Authored by, Claude session keys etc. in commits.
 - `/stag-quirks` exists, use it.
 
+## Code Style Guidelines
+- Multi-line comments utilize multi-line comment `/* */` syntax instead of `//` single comments per line.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
