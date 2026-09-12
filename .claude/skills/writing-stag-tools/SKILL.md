@@ -17,6 +17,14 @@ https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp
 
 WebFetch this for the `<namespace>` (and its `ng_<namespace>` counterpart if one exists) to get method names, params, and which endpoints are flagged `Negarantováno!` (unstable). Prefer `ng_` when it works, though it doesn't always (see stag-quirks: `ng_predmety` 403s on role rejection regardless of params). If a `ng_` namespace is blocked, fall back to the old one and say why in `stag-quirks.md` and the todo.md entry, rather than silently skipping it.
 
+**Then pull the response schema, before calling anything:**
+
+```
+https://stag-ws.zcu.cz/ws/services/rest2/<namespace>?_wadl
+```
+
+This returns a WADL with a full embedded XSD of every response type: field names, types, `minOccurs`, and any enum values. It answers anonymously on every namespace, including ones whose endpoints 401, so you get the shape even for an endpoint you can't coax non-empty data out of. It is the fastest way to see what a payload contains and to tell whether two namespaces overlap (grep the WADLs for a type name). It is not a substitute for the live calls below: the XSD says `xs:int`, it doesn't say whether STAG quotes the number in JSON, and it can't tell you an endpoint returns nothing (`podporaVyuky/getStavSP` has a rich schema and is dead for students).
+
 **Then call it for real.** There's a dev user with a live `stag_token` in the local DB:
 
 ```
