@@ -7,6 +7,7 @@ use App\Mcp\Tools\GetHarmonogramTool;
 use App\Mcp\Tools\GetKalendarTool;
 use App\Mcp\Tools\GetMistnostiTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
+use App\Mcp\Tools\GetZnamkyTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
 use App\Mcp\Tools\SearchPredmetyTool;
@@ -27,6 +28,7 @@ class StagMcpServer extends Server
         GetPredmetInfoTool::class,
         GetHarmonogramTool::class,
         GetKalendarTool::class,
+        GetZnamkyTool::class,
     ];
 
     protected array $resources = [
