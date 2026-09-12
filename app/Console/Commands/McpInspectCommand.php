@@ -16,6 +16,10 @@ use Symfony\Component\Process\Process;
  * Authentication panel by hand. Handing the token over on the inspector's own
  * `--header` flag keeps the route as strict as it is in production, and the
  * tools run against a genuine user with a genuine STAG ticket.
+ *
+ * `--cli` swaps the browser UI for the inspector's own headless mode, so an
+ * agent (or a human in a hurry) can call one tool and read its JSON result —
+ * schema-validation errors included — without a browser in the loop.
  */
 class McpInspectCommand extends Command
 {
@@ -23,7 +27,12 @@ class McpInspectCommand extends Command
 
     protected $signature = 'mcp:inspect
                             {--user= : Email of the user to inspect as, when the app has more than one}
-                            {--print : Print the inspector command instead of running it}';
+                            {--print : Print the inspector command instead of running it}
+                            {--cli : Run the inspector headlessly instead of opening the web UI, for scripting or agent use}
+                            {--method= : MCP method to invoke in --cli mode (default: tools/list, or tools/call when --tool is given)}
+                            {--tool= : Tool name to call in --cli mode; implies --method=tools/call}
+                            {--tool-arg=* : key=value tool argument for --cli mode, repeatable}
+                            {--format=json : Output format in --cli mode: json or text}';
 
     protected $description = 'Open the MCP Inspector on the STAG server, authenticated as a real user';
 
@@ -43,13 +52,17 @@ class McpInspectCommand extends Command
 
         $process = $this->inspectorProcess($this->mintToken($user));
 
-        $this->components->info("Inspecting {$this->serverUrl()} as {$user->email}.");
+        // --cli output is meant to be read by a script or an agent, so it stays
+        // limited to whatever the inspector itself prints on stdout — no banner.
+        if (! $this->option('cli')) {
+            $this->components->info("Inspecting {$this->serverUrl()} as {$user->email}.");
 
-        if (! $user->hasValidStagToken()) {
-            $this->components->warn(
-                'This user has no live IS-STAG token. Tools needing one will say so until you authorize at '
-                .route('dashboard').'.'
-            );
+            if (! $user->hasValidStagToken()) {
+                $this->components->warn(
+                    'This user has no live IS-STAG token. Tools needing one will say so until you authorize at '
+                    .route('dashboard').'.'
+                );
+            }
         }
 
         if ($this->option('print')) {
@@ -76,18 +89,44 @@ class McpInspectCommand extends Command
             'npx',
             '-y',
             self::INSPECTOR_PACKAGE,
-            '--web',
-            '--transport',
-            'http',
-            '--server-url',
-            $this->serverUrl(),
-            '--header',
-            "Authorization: Bearer {$token}",
+            ...$this->inspectorArgs($token),
         ], base_path(), $this->environment());
 
         $process->setTimeout(null);
 
         return $process;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function inspectorArgs(string $token): array
+    {
+        $auth = ['--transport', 'http', '--server-url', $this->serverUrl(), '--header', "Authorization: Bearer {$token}"];
+
+        if (! $this->option('cli')) {
+            return ['--web', ...$auth];
+        }
+
+        $args = ['--cli', ...$auth, '--format', $this->option('format')];
+        $args[] = '--method';
+
+        if ($tool = $this->option('tool')) {
+            $args[] = 'tools/call';
+            $args[] = '--tool-name';
+            $args[] = $tool;
+
+            foreach ($this->option('tool-arg') as $pair) {
+                $args[] = '--tool-arg';
+                $args[] = $pair;
+            }
+
+            return $args;
+        }
+
+        $args[] = $this->option('method') ?? 'tools/list';
+
+        return $args;
     }
 
     private function runInspector(Process $process): int

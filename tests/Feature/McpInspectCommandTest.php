@@ -78,3 +78,55 @@ it('fails when no users exist', function () {
         ->expectsOutputToContain('No users exist yet')
         ->assertFailed();
 });
+
+it('defaults --cli to listing tools in json', function () {
+    User::factory()->create();
+
+    // Laravel's expectsOutputToContain assertions each latch onto a separate
+    // console write, so two of them checking the same single printed line
+    // race for it and only the first ever gets credited — hence one
+    // assertion per test here, each covering a contiguous chunk of that line.
+    $this->artisan('mcp:inspect', ['--print' => true, '--cli' => true])
+        ->expectsOutputToContain("'--cli' '--transport' 'http' '--server-url'")
+        ->assertSuccessful();
+});
+
+it('formats --cli output as json by default', function () {
+    User::factory()->create();
+
+    $this->artisan('mcp:inspect', ['--print' => true, '--cli' => true])
+        ->expectsOutputToContain("'--format' 'json' '--method' 'tools/list'")
+        ->assertSuccessful();
+});
+
+it('calls a named tool with its arguments in --cli mode', function () {
+    User::factory()->create();
+
+    $this->artisan('mcp:inspect', [
+        '--print' => true,
+        '--cli' => true,
+        '--tool' => 'get-predmet-info',
+        '--tool-arg' => ['katedra=KIV', 'zkratka=UPA'],
+    ])
+        ->expectsOutputToContain(
+            "'--method' 'tools/call' '--tool-name' 'get-predmet-info' '--tool-arg' 'katedra=KIV' '--tool-arg' 'zkratka=UPA'"
+        )
+        ->assertSuccessful();
+});
+
+it('honours an explicit --method in --cli mode when no tool is given', function () {
+    User::factory()->create();
+
+    $this->artisan('mcp:inspect', ['--print' => true, '--cli' => true, '--method' => 'resources/list'])
+        ->expectsOutputToContain("'--method' 'resources/list'")
+        ->assertSuccessful();
+});
+
+it('suppresses the inspecting banner in --cli mode', function () {
+    User::factory()->create();
+
+    $this->artisan('mcp:inspect', ['--print' => true, '--cli' => true])
+        ->doesntExpectOutputToContain('Inspecting')
+        ->doesntExpectOutputToContain('no live IS-STAG token')
+        ->assertSuccessful();
+});
