@@ -3,12 +3,8 @@
 namespace App\Mcp\Enums;
 
 /**
- * STAG's `typRozvrhDne`/`obdobi` period codes (`kalendar` and `rozvrhy`
- * namespaces). Not available from `ciselniky/getCiselnik` (that endpoint
- * 500s regardless of parameter name tried), so these are hardcoded from
- * observed values cross-checked against `getHarmonogramRoku`'s Czech
- * descriptions, e.g. "ZR" runs from "Začátek ak. roku" through "Začíná:
- * Zimní semestr".
+ * STAG's `typRozvrhDne`/`obdobi` period codes. Inferred from observed values
+ * and cross-checked against `getHarmonogramRoku`'s Czech descriptions.
  */
 enum CalendarPeriod: string
 {

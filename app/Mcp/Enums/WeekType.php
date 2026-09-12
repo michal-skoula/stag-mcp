@@ -3,11 +3,10 @@
 namespace App\Mcp\Enums;
 
 /**
- * STAG's `TYDEN` číselník codes: J/K/L/S (Jiný, Každý, Lichý, Sudý). Used
- * per-day in `kalendar/getKalendarRoku`'s `typTydne` and per-occurrence in
- * `rozvrhy/getRozvrhByStudent`'s `tydenZkr`.
+ * STAG's `TYDEN` číselník codes, confirmed against
+ * `ciselniky/getCiselnik?domena=TYDEN`.
  */
-enum WeekParity: string
+enum WeekType: string
 {
     case Odd = 'L';
     case Even = 'S';
