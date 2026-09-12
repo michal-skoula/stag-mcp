@@ -20,13 +20,15 @@ Route::middleware('guest')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::view('dashboard', 'dashboard')->name('dashboard');
 
+    Route::view('settings', 'settings')->name('settings');
+
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
 // Stag
 Route::middleware('auth')->group(function (): void {
-   Route::get('stag/authorize', [StagAuthorizationController::class, 'authorize'])->name('stag.authorize');
-   Route::post('stag/revoke', [StagAuthorizationController::class, 'revoke'])->name('stag.revoke');
+    Route::get('stag/authorize', [StagAuthorizationController::class, 'authorize'])->name('stag.authorize');
+    Route::post('stag/revoke', [StagAuthorizationController::class, 'revoke'])->name('stag.revoke');
 });
 
 Route::get('dump', function (Request $request, Response $response) {

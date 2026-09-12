@@ -1,6 +1,7 @@
 <x-layouts.auth title="Dashboard">
     <p class="text-sm">
         Signed in as <span class="font-medium">{{ auth()->user()->name }}</span>.
+        <a href="{{ route('settings') }}" class="underline">Settings</a>
     </p>
 
     <div class="mt-5 space-y-3">
