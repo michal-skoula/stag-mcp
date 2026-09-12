@@ -4,8 +4,10 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Tools\GetBudovyTool;
 use App\Mcp\Tools\GetMistnostiTool;
+use App\Mcp\Tools\GetPredmetInfoTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
+use App\Mcp\Tools\SearchPredmetyTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -19,6 +21,8 @@ class StagMcpServer extends Server
         MarkNotificationsReadTool::class,
         GetBudovyTool::class,
         GetMistnostiTool::class,
+        SearchPredmetyTool::class,
+        GetPredmetInfoTool::class,
     ];
 
     protected array $resources = [

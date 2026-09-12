@@ -1,12 +1,14 @@
 ## MCP Tools
 
 ### STAG API
+> Implemented: 5/18
+
 - [ ] ? Ciselniky, not sure wtf it is. needs testing
 - [ ] **UserInfoTool:** `help` namespace, info about the current user, to get roles, name, etc. Either save from ticket resolution or call the tool. Can combine multiple calls together.  Also note some overlap in the `orion` namespace
 - [ ] **Kalendar\*Tool:** Everything in the `kalendar` namespace. Contains important dates for the semester, events, etc. test the output shapes, and what the tool could look like. Ideally combine multiple endpoints into one with bool flags, so chat context doesnt get spammed too hard. Also note some overlap in the `orion` namespace
 - [x] **GetBudovyTool:** finished! No caching yet — plain pass-through. TODO left in the tool itself for long-TTL caching with checksum-based invalidation.
 - [x] **GetMistnostiTool:** finished! One tool covering `getMistnostiInfo`, narrowed to a fixed field set (no coarse/detail split). Filters: zkr_budovy, cislo_mistnosti, pracoviste, typ, jen_platne. Paged with count/offset (default 100, max 500) instead of a hard truncation cutoff.
-- [ ] **Predmety:** `ng_predmety` and `predmety`: Has search and info, copies the pattern of **Mistnosti tools**, search then pinpoint. Needs to find the output schema to design something that makes sense. NG is marked unstable. the ng_ namespace here is LOADED with goods. Re-read when it comes to building the tools
+- [x] **Predmety:** finished, on the old `predmety` namespace only. SearchPredmetyTool fetches `getPredmetyByFakulta` unfiltered (~10k rows, ~3MB, ~0.2s — cheap enough to be the whole implementation) and matches nazev/katedra/zkratka as case-insensitive substrings client-side, since `najdiPredmety`'s `nazev` is an exact-title match and was unusable for free-text search. GetPredmetInfoTool wraps `getPredmetInfo` (curated/grouped ~65-field payload into identity/teaching/hours/exam/people/content/relations/ects/misc). `ng_predmety` skipped for v1: every endpoint 403'd with a role rejection for the one test account available, regardless of params sent — see stag-quirks.md. Revisit once testable with a role STAG doesn't reject.
 - [ ] **TerminyStatnicTool:** `ng_terminy`, Might overlap with the **Kalendar** suite of tools, but it is its own volatile endpoint. This is a caching candidate, as this changes... once or twice a year.
 - [x] **OznameniTools:** finished!
 - [ ] **SemestralniPrace tools**: `podporaVyuky` namespace, readonly for semestralni prace metadata. If i understand it correctly this is huge because it lets you see what you need to do and what you have already done, which is same level of huge as surfacing notifications. Pog!
@@ -30,3 +32,7 @@
 - [ ] FacultiesList
 - [ ] CommonSoftwareAndWebsitesList
 - [ ] any kind of tutorial like "how to do předzápis", can be community based, this is deff not V1 territorry though
+
+## Other
+- [ ] All `$request->validate()` calls on the tools need custom error messages so you dont get stuff like `data/teaching/kredity must be string, data/teaching/kredity must be null...` and so on.
+- [ ] One big copywriting refactor for all tools: unify the tool names, descriptions, schemas etc. to read good, and also translate the whole app to support cs and en, like STAG does. set in UserPreferences
