@@ -89,9 +89,11 @@ class GetKalendarTool extends Tool
                     'timetable_day' => $nullableString()->description('STAG\'s timetable weekday code (English), e.g. "Tuesday". Null on Svátek/Rektorský den, when it is not a real weekday.'),
                     'timetable_week' => $nullableString()->description('Odd/even week marker for this specific day: "odd", "even", "every", or "other". Read per day, not derived from week_number.'),
                     'week_number' => $nullableInt()->description('ISO-ish week number STAG assigns, or null.'),
-                    'period' => $schema->object([
-                        'code' => $schema->string()->description('Raw STAG code, e.g. "ZS".'),
-                        'label' => $schema->string()->description('English label for the code.'),
+                    'period' => $schema->anyOf([
+                        $schema->object([
+                            'code' => $schema->string()->description('Raw STAG code, e.g. "ZS".'),
+                            'label' => $schema->string()->description('English label for the code.'),
+                        ]),
                     ])->description('The academic-year period this day falls in, or null.')->nullable(),
                     'teaching' => $schema->boolean()->description('False when the timetable-day code is Svátek/Rektorský den, or the period is not an in-semester one.'),
                     'non_teaching_reason' => $nullableString()->description('Why teaching is false on this day, or null when teaching is true.'),
