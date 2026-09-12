@@ -66,7 +66,7 @@ final readonly class StudyRecord
             $courseId = $subject->courseIdentifier();
 
             if (
-                !isset($supersededSubjects[$courseId]) || // Guard for getting the latest retake if there are multiple.
+                ! isset($supersededSubjects[$courseId]) || // Guard for getting the latest retake if there are multiple.
                 $subject->academicPeriodSortRank() > $supersededSubjects[$courseId]->academicPeriodSortRank()
             ) {
                 $supersededSubjects[$courseId] = $subject;
@@ -109,8 +109,6 @@ final readonly class StudyRecord
 
     /**
      * Whether the study record is empty.
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {
@@ -119,8 +117,6 @@ final readonly class StudyRecord
 
     /**
      * How many subjects are in the record.
-     *
-     * @return int
      */
     public function count(): int
     {
@@ -138,6 +134,7 @@ final readonly class StudyRecord
         $creditsEarned = 0;
         $creditsEnrolled = 0;
         $retaken = 0;
+        $uncredited = 0;
 
         foreach ($this->subjects as $subject) {
 
@@ -161,6 +158,20 @@ final readonly class StudyRecord
             if ($subject->isSuperseded()) {
                 $retaken++;
             }
+
+            /*
+             * A subject the catalogue endpoint does not list has no credit
+             * value on record (see Subject::fromRow()), which silently zeroes
+             * its contribution to credits_earned/credits_enrolled above and
+             * excludes it from both GPAs below (calculateWeightedAvg() skips
+             * any subject with a null credit). That is a real, observed STAG
+             * condition — the two endpoints can disagree on what exists — not
+             * a hypothetical, so it is counted here rather than left to look
+             * like a smaller-than-real total with no explanation.
+             */
+            if ($subject->credits() === null) {
+                $uncredited++;
+            }
         }
 
         return [
@@ -168,13 +179,14 @@ final readonly class StudyRecord
             'credits_earned' => $creditsEarned,
             'credits_enrolled' => $creditsEnrolled,
             'retaken' => $retaken,
+            'uncredited' => $uncredited,
             'gpa_official' => $this->calculateWeightedAvg(
                 fn (Subject $s) => ($s->completionStatus()?->countsTowardAverage() ?? false) && ! $s->isSuperseded(),
-                'Credit-weighted mean over concluded subjects on a graded scale, scoring an unfinished one as 4, matching how STAG and the printed transcript compute it. Subjects later retaken and passed, and zápočet-only subjects, are excluded.',
+                'Credit-weighted mean over concluded subjects on a graded scale, scoring an unfinished one as 4, matching how STAG and the printed transcript compute it. Subjects later retaken and passed, zápočet-only subjects, and subjects with no credit value on record (see uncredited), are excluded.',
             ),
             'gpa_passed_only' => $this->calculateWeightedAvg(
                 fn (Subject $s) => $s->status() === 'passed',
-                'Credit-weighted mean over passed subjects on a graded scale only. Not the official figure: it omits failed subjects, so it reads better than the transcript will.',
+                'Credit-weighted mean over passed subjects on a graded scale only. Not the official figure: it omits failed subjects, so it reads better than the transcript will. Also excludes any subject with no credit value on record (see uncredited).',
             ),
         ];
     }

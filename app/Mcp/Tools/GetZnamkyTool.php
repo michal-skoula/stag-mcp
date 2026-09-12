@@ -39,12 +39,17 @@ class GetZnamkyTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            /* Accepts a number as well as a string: the year reads as numeric,
-             * and clients send 2025 as often as "2025". */
+            /*
+             * Accepts a number as well as a string: the year reads
+             * as numeric, and clients send 2025 as often as "2025".
+             */
             'rok' => $schema->anyOf([$schema->string(), $schema->integer()])
                 ->description('Academic year to show, given as its starting year: 2025 means 2025/2026. Defaults to the current academic year. Ignored when all_years is true.'),
-            /* Accepts "" as an alias for "%": an agent that leaves the field
-             * blank rather than typing the wildcard should still get both. */
+            /*
+             * Accepts "" as an alias for "%": an agent that leaves the field
+             * blank rather than typing the wildcard should still get both.
+             */
+            // todo: replace enum with winter, summer, both, default to both, remove empty state since now we have a default.
             'semestr' => $schema->string()->enum(['ZS', 'LS', '%', ''])
                 ->description('Semester to show: "ZS" (winter), "LS" (summer), "%" or "" for both. Defaults to the semester the current date falls in. Ignored when all_years is true.'),
             'all_years' => $schema->boolean()
@@ -91,6 +96,7 @@ class GetZnamkyTool extends Tool
             'date' => $nullableString()->description('ISO date of the outcome, or null.'),
             'teacher' => $nullableString()->description('Who recorded it, "Surname Forename" as STAG stores it. Null when not graded yet.'),
             'teacher_id' => $nullableInt()->description('ucitIdno of that teacher, for cross-referencing the ucitel namespace.'),
+            // todo: this is pointless; remove
             'language' => $nullableString()->description('Language the assessment was taken in, e.g. "CZ". Null when not applicable.'),
         ])])->nullable()->description($description);
 
@@ -108,6 +114,7 @@ class GetZnamkyTool extends Tool
                 'in_progress' => $schema->integer()->description('Number of subjects currently being studied, with no outcome yet.'),
                 'other' => $schema->integer()->description('Number of subjects recognised, transferred, deferred, or in a state none of the above covers.'),
                 'retaken' => $schema->integer()->description('Number of earlier failed enrolments that a later passing enrolment supersedes. Excluded from gpa_official so a retaken subject is not counted twice.'),
+                'uncredited' => $schema->integer()->description('Number of subjects with no credit value on record (STAG\'s two sources can disagree on what exists). Excluded from credits_earned, credits_enrolled, and both averages, since a credit-weighted mean cannot weigh a subject with no credit value.'),
                 'gpa_official' => $average("STAG's own weighted average, the number the portal, mobile app and printed transcript show."),
                 'gpa_passed_only' => $average('The same weighting over passed subjects alone. Higher, and not the official figure.'),
             ])->description('Totals over every subject in view.'),
@@ -168,7 +175,7 @@ class GetZnamkyTool extends Tool
         $rok = $allYears ? null : (string) ($validated['rok'] ?? $this->academicYearFor($today));
         $semestr = $allYears ? null : ($semestrInput ?? $this->semesterFor($today));
 
-        $record = (new StudyRecordService($stag))->forStudent($osCislo);
+        $record = (new StudyRecordService($stag))->getRecordForStudent($osCislo);
 
         if ($record->isEmpty()) {
             return Response::error("STAG returned no subjects for osCislo '{$osCislo}'. An osCislo that is not the one this ticket belongs to comes back empty rather than as an error, so check it if you passed it explicitly.");
@@ -178,7 +185,7 @@ class GetZnamkyTool extends Tool
 
         return Response::structured([
             'os_cislo' => $osCislo,
-            'rok' => $rok,
+            'rok' => is_numeric($rok) ? $rok.'/'.(int) $rok + 1 : null,
             'semestr' => $semestr,
             'all_years' => $allYears,
             'total' => $matching->count(),

@@ -26,7 +26,7 @@ final readonly class StudyRecordService
      *
      * @throws StagException
      */
-    public function forStudent(string $osCislo): StudyRecord
+    public function getRecordForStudent(string $osCislo): StudyRecord
     {
         // `student_na_predmetu` is a wrapper key containing the grades array.
         $rows = $this->stag->get('znamky/getZnamkyByStudent', ['osCislo' => $osCislo])['student_na_predmetu'] ?? [];
@@ -36,7 +36,7 @@ final readonly class StudyRecordService
             return StudyRecord::build(rows: [], subjectsCatalogue: [], scales: GradeScales::fromPayload([]));
         }
 
-        return StudyRecord::build($rows, $this->subjectsCatalogue(), $this->getGradingScalesFromStag());
+        return StudyRecord::build($rows, $this->getSubjectsCatalogue(), $this->getGradingScalesFromStag());
     }
 
     /**
@@ -52,7 +52,7 @@ final readonly class StudyRecordService
      *
      * @throws StagException
      */
-    private function subjectsCatalogue(): array
+    private function getSubjectsCatalogue(): array
     {
         // `predmetAbsolvoval` is a wrapper key containing the subjects array.
         $rows = $this->stag->get('student/getStudentPredmetyAbsolvoval')['predmetAbsolvoval'] ?? [];
