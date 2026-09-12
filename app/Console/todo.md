@@ -1,15 +1,15 @@
 ## MCP Tools
 
 ### STAG API
-> Implemented: 5/18
+> Implemented: 6/18
 
-- [ ] ? Ciselniky, not sure wtf it is. needs testing
-- [ ] **UserInfoTool:** `help` namespace, info about the current user, to get roles, name, etc. Either save from ticket resolution or call the tool. Can combine multiple calls together.  Also note some overlap in the `orion` namespace
-- [ ] **Kalendar\*Tool:** Everything in the `kalendar` namespace. Contains important dates for the semester, events, etc. test the output shapes, and what the tool could look like. Ideally combine multiple endpoints into one with bool flags, so chat context doesnt get spammed too hard. Also note some overlap in the `orion` namespace
+- [ ] ? Ciselniky, not sure wtf it is. needs testing. `ciselniky/getCiselnik` 500s regardless of the parameter name tried (`ciselnikId`, `kod`, `nazevCiselniku`) — needs the right param name found before it's usable.
+- [ ] **UserInfoTool:** `help` namespace, info about the current user, to get roles, name, etc. Either save from ticket resolution or call the tool. Can combine multiple calls together.  Also note some overlap in the `orion` namespace. Note: `help/getStagUserListForActualUser` is already wrapped by `ResolvesStagIdentity` (used by GetKalendarTool) — reuse that trait rather than re-resolving identity from scratch.
+- [x] **Kalendar\*Tool:** finished, as two tools. GetHarmonogramTool merges `kalendar/getAktualniObdobiInfo` + `kalendar/getHarmonogramRoku` into one ascending list of semester milestones (year param optional, defaults to current). GetKalendarTool merges `kalendar/getKalendarRoku` (odd/even week + period per day) with `rozvrhy/getRozvrhByStudent` (the actual timetable: classes, seminars, exams, zápočty) over a date range, paged by day (count/offset, default 100, max 500, range capped at 400 days). `include_empty_days` bool controls whether ordinary no-event teaching days are dropped (default) or shown. Needs a real STAG ticket (`rozvrhy` 401s anonymously) even though the `kalendar` half doesn't. Skipped: caching (this data changes at most a few times a year, same TODO shape as GetBudovyTool).
 - [x] **GetBudovyTool:** finished! No caching yet — plain pass-through. TODO left in the tool itself for long-TTL caching with checksum-based invalidation.
 - [x] **GetMistnostiTool:** finished! One tool covering `getMistnostiInfo`, narrowed to a fixed field set (no coarse/detail split). Filters: zkr_budovy, cislo_mistnosti, pracoviste, typ, jen_platne. Paged with count/offset (default 100, max 500) instead of a hard truncation cutoff.
 - [x] **Predmety:** finished, on the old `predmety` namespace only. SearchPredmetyTool fetches `getPredmetyByFakulta` unfiltered (~10k rows, ~3MB, ~0.2s — cheap enough to be the whole implementation) and matches nazev/katedra/zkratka as case-insensitive substrings client-side, since `najdiPredmety`'s `nazev` is an exact-title match and was unusable for free-text search. GetPredmetInfoTool wraps `getPredmetInfo` (curated/grouped ~65-field payload into identity/teaching/hours/exam/people/content/relations/ects/misc). `ng_predmety` skipped for v1: every endpoint 403'd with a role rejection for the one test account available, regardless of params sent — see stag-quirks.md. Revisit once testable with a role STAG doesn't reject.
-- [ ] **TerminyStatnicTool:** `ng_terminy`, Might overlap with the **Kalendar** suite of tools, but it is its own volatile endpoint. This is a caching candidate, as this changes... once or twice a year.
+- [x] ~~**TerminyStatnicTool:**~~ Dropped. `ng_terminy/getTerminyStatnic` is dead: `p_datum_od` is mandatory and 500s on every date format tried (ISO, `d.M.yyyy`, no separators, ISO datetime, empty) with a Joda-Time constructor error. No SOAP fallback (`/ws/services/ng_terminy?wsdl` 404s). No other endpoint in the whole documented REST2 surface covers state exams. Revisit only if STAG fixes the endpoint server-side; there's nothing left to try client-side.
 - [x] **OznameniTools:** finished!
 - [ ] **SemestralniPrace tools**: `podporaVyuky` namespace, readonly for semestralni prace metadata. If i understand it correctly this is huge because it lets you see what you need to do and what you have already done, which is same level of huge as surfacing notifications. Pog!
 - [ ] `programy` looks interesting, too tired to read it rn
@@ -36,3 +36,5 @@
 ## Other
 - [ ] All `$request->validate()` calls on the tools need custom error messages so you dont get stuff like `data/teaching/kredity must be string, data/teaching/kredity must be null...` and so on.
 - [ ] One big copywriting refactor for all tools: unify the tool names, descriptions, schemas etc. to read good, and also translate the whole app to support cs and en, like STAG does. set in UserPreferences
+- [ ] One big sweep adding observability: stuff like reporting 500s and 400s that arent exposed to the user to Nightwatch, logging
+- [ ] Telemetry: log interesting stats about usage: which tools are called the most often, cache hits/misses, which users are the most active, the fun stuff

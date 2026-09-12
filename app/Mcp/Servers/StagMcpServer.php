@@ -3,6 +3,8 @@
 namespace App\Mcp\Servers;
 
 use App\Mcp\Tools\GetBudovyTool;
+use App\Mcp\Tools\GetHarmonogramTool;
+use App\Mcp\Tools\GetKalendarTool;
 use App\Mcp\Tools\GetMistnostiTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
 use App\Mcp\Tools\ListNotificationsTool;
@@ -23,6 +25,8 @@ class StagMcpServer extends Server
         GetMistnostiTool::class,
         SearchPredmetyTool::class,
         GetPredmetInfoTool::class,
+        GetHarmonogramTool::class,
+        GetKalendarTool::class,
     ];
 
     protected array $resources = [
