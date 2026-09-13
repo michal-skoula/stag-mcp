@@ -58,5 +58,16 @@ description: "Load every time when working with the STAG api, writing tools for 
 - `ng_znamky?_wadl` returns 200 but declares zero resources — an empty stub, no new-generation path to prefer.
 - `student/getStatistikyRocni` and `student/getStatistikySuma` both 500 flat with a valid ST ticket.
 
+- `help/getStagUserListForActualUserV2` is a strict superset of the non-V2 endpoint: same `stagUserInfo` role rows plus top-level `jmeno`, `prijmeni`, `titulPred`, `titulZa`, `email`. Prefer it; `ResolvesStagIdentity` uses it.
+- `help/getStagUserForActualUser` (singular) 403s on a multi-role account — it cannot pick a role. Only the list endpoints work there. Both 401 anonymously; `help/organizaceInfo` is the one anonymous endpoint in the namespace.
+- A dual-role account's `stagUserInfo` rows are disjoint: the `VY` row has `ucitIdno` (a real int) and null `osCislo`, the `ST` row the reverse. `ucitIdno` is the only int in the row; everything else is a string.
+- `student/getStudentInfo` needs `osCislo` (500 without it) and 403s for a foreign or bogus one — a real identity check, unlike `znamky/getZnamkyByStudent`, which returns an empty list. Its `lang=en` is ignored: `nazevSp` stays Czech. `rocnik`, `stprIdno`, `oborIdnos`, `financovani`, `typSpKey` and `studReferentkaUcitidno` all come back as quoted strings.
+- `student/getStudentFull` 403s even for the caller's own `osCislo`. Admin-scoped, not usable from a student or teacher ticket.
+- `student/getStudentOsobniUdaje` has no `osCislo` param at all (only `stagUser`) and always returns the ticket holder, ignoring any `osCislo` passed — same quirk as `getStudentPredmetyAbsolvoval`. It carries rodné číslo, home address, phones, date of birth and bank-account fields, so keep it out of MCP output.
+- `ucitel/getUcitelInfo?ucitIdno=` answers any authenticated caller including a student, and returns `[]` for an unknown id rather than a 404. 401s anonymously.
+- `orion` is not worth wrapping: `getOrionLoginByOsobniCislo` returns `[]` for a student's own number, `getUcitIdnoByOrionLogin` returns `[]` for a non-teacher, and `getOsobniCislaByOrionLogin` (param `login`, not the docs' `orionLogin`) only reproduces `getStudentInfo.userName`. The docs page has the wrong param names for this namespace — read the WADL instead.
+- `ciselniky/getCiselnik` wraps a populated list in `ciselnikItem`; the bare `ciselnik` key only shows up on a bogus `domena`.
+- Codebooks for `getStudentInfo`'s codes: `stav` → `STAV_STUDENTA` (S/P/N), `formaSp` → `FORMA_OBORU_NEW` (P/K/D). `typSp` (B/N/D) has none — `TYP_STUDIA` classifies the school (1 = Vysoká škola), not the degree. `mistoVyuky`'s `"P"` does not resolve against `MISTO_VYUKY`, whose keys are municipality numbers (554791 = Plzeň).
+
 ## Writing notes
 When adding to the file, add a new bullet point under `## Notes` with the minimum needed information, don't write unnecessary prose. Short and sweet beats verbose and unreadable.

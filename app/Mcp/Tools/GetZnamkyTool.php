@@ -60,7 +60,7 @@ class GetZnamkyTool extends Tool
             'zkratka' => $schema->string()
                 ->description('Only subjects whose code contains this, case-insensitive, e.g. "MA1".'),
             'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) to fetch grades for, for accounts holding more than one STAG role. Resolved automatically when omitted.'),
+                ->description('Personal number (osCislo) to fetch grades for, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
         ];
     }
 

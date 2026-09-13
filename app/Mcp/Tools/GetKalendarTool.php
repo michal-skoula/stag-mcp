@@ -53,7 +53,7 @@ class GetKalendarTool extends Tool
             'date_to' => $schema->string()
                 ->description('Last date to include, ISO Y-m-d. Defaults to date_from + 13 days.'),
             'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) to fetch the timetable for, for accounts holding more than one STAG role. Resolved automatically via help/getStagUserListForActualUser when omitted.'),
+                ->description('Personal number (osCislo) to fetch the timetable for, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
             'include_empty_days' => $schema->boolean()
                 ->description('Include every day in the range, even ordinary teaching days with nothing scheduled. Off by default: only days carrying an event, or a reason nothing is scheduled (holiday, exam period, ...), are returned.')
                 ->default(false),

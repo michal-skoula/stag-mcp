@@ -15,16 +15,23 @@ const STAG_GET_KALENDAR_ROKU = 'stag-ws.zcu.cz/ws/services/rest2/kalendar/getKal
  */
 function stagUserList(array $overrides = []): array
 {
-    return ['stagUserInfo' => [array_merge([
-        'userName' => 'A25B0093P',
-        'role' => 'ST',
-        'roleNazev' => 'Student',
-        'fakulta' => 'FAV',
-        'katedra' => null,
-        'ucitIdno' => null,
-        'osCislo' => 'A25B0093P',
+    return [
+        'jmeno' => 'Michal',
+        'prijmeni' => 'ŠKOULA',
+        'titulPred' => null,
+        'titulZa' => null,
         'email' => 'skoulam@students.zcu.cz',
-    ], $overrides)]];
+        'stagUserInfo' => [array_merge([
+            'userName' => 'A25B0093P',
+            'role' => 'ST',
+            'roleNazev' => 'Student',
+            'fakulta' => 'FAV',
+            'katedra' => null,
+            'ucitIdno' => null,
+            'osCislo' => 'A25B0093P',
+            'email' => 'skoulam@students.zcu.cz',
+        ], $overrides)],
+    ];
 }
 
 /**
