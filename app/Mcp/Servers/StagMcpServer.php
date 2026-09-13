@@ -11,6 +11,7 @@ use App\Mcp\Tools\GetZnamkyTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
 use App\Mcp\Tools\SearchPredmetyTool;
+use App\Mcp\Tools\StudyAdvisorTool;
 use App\Mcp\Tools\UserInfoTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
@@ -31,6 +32,7 @@ class StagMcpServer extends Server
         GetKalendarTool::class,
         GetZnamkyTool::class,
         UserInfoTool::class,
+        StudyAdvisorTool::class,
     ];
 
     protected array $resources = [

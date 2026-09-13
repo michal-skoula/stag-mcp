@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('who-am-i')]
 #[Title('Who Am I')]
-#[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form, state and study advisor; a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-znamky and get-kalendar accept. Takes no arguments - it always describes the account behind the ticket.')]
+#[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form and state (use get-study-advisor for the referentka); a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-znamky and get-kalendar accept. Takes no arguments - it always describes the account behind the ticket.')]
 #[IsReadOnly]
 class UserInfoTool extends Tool
 {
@@ -87,14 +87,6 @@ class UserInfoTool extends Tool
                             'specialisation' => $nullableString()->description('Specialisation combination, e.g. "SWI23bp".'),
                             'specialisation_ids' => $nullableString()->description("STAG's internal specialisation ids."),
                         ])->description('The study programme being read.'),
-                        // todo: i thin k this should be a separate tool, this isnt really related to who the user is and calling it will likely confuse the agent vs a separate tool
-                        'study_advisor' => $schema->object([
-                            'name' => $nullableString()->description('Study advisor (studijní referentka), surname first.'),
-                            'email' => $nullableString()->description('Advisor email.'),
-                            'telefon' => $nullableString()->description('Advisor phone.'),
-                            'user_name' => $nullableString()->description('Advisor login.'),
-                            'ucit_idno' => $nullableString()->description('Advisor teacher id, as STAG sends it (a quoted number).'),
-                        ])->description('Who to contact about this study.'),
                     ])])->description('Study detail, present on student roles only.')->nullable(),
                     'teacher' => $schema->anyOf([$schema->object([
                         'ucit_idno' => $schema->integer()->description('Teacher id.'),
@@ -212,13 +204,6 @@ class UserInfoTool extends Tool
                 'id' => $info['stprIdno'] ?? null,
                 'specialisation' => $info['oborKomb'] ?? null,
                 'specialisation_ids' => $info['oborIdnos'] ?? null,
-            ],
-            'study_advisor' => [
-                'name' => $info['studReferentkaPrijmeniJmeno'] ?? null,
-                'email' => $info['studReferentkaEmail'] ?? null,
-                'telefon' => $info['studReferentkaTelefon'] ?? null,
-                'user_name' => $info['studReferentkaUsername'] ?? null,
-                'ucit_idno' => $info['studReferentkaUcitidno'] ?? null,
             ],
         ];
     }

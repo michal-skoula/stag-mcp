@@ -162,7 +162,6 @@ it('returns the name and the study detail behind a student ticket', function () 
         ->assertSee('"type":"bachelor"')
         ->assertSee('"rocnik":"2"')
         ->assertSee('"name":"Softwarové inženýrství"')
-        ->assertSee('"name":"Sutnerová Petra"')
         ->assertSee('"teacher":null');
 });
 
@@ -193,7 +192,9 @@ it('drops the card number and the other fields STAG volunteers', function () {
         ->assertDontSee('cisloKarty')
         ->assertDontSee('pohlavi')
         ->assertDontSee('evidovanBankovniUcet')
-        ->assertDontSee('typSpKey');
+        ->assertDontSee('typSpKey')
+        ->assertDontSee('study_advisor')
+        ->assertDontSee('Sutnerová Petra');
 });
 
 it('never asks STAG for the personal data endpoint', function () {
