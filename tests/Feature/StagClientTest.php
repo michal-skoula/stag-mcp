@@ -1,6 +1,6 @@
 <?php
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -11,7 +11,7 @@ const ANY_STAG = 'stag-ws.zcu.cz/*';
 it('attaches the ticket as a cookie when the user has one', function () {
     Http::fake([ANY_STAG => Http::response([])]);
 
-    (new StagClient(User::factory()->withStagToken('a-ticket')->create()))
+    (new StagHttpClient(User::factory()->withStagToken('a-ticket')->create()))
         ->get('ciselniky/getCiselnik');
 
     Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'WSCOOKIE=a-ticket'));
@@ -20,7 +20,7 @@ it('attaches the ticket as a cookie when the user has one', function () {
 it('calls anonymous services without a cookie at all', function () {
     Http::fake([ANY_STAG => Http::response([])]);
 
-    (new StagClient(User::factory()->create()))
+    (new StagHttpClient(User::factory()->create()))
         ->get('ciselniky/getCiselnik');
 
     Http::assertSent(fn ($request) => ! $request->hasHeader('Cookie'));
@@ -29,35 +29,35 @@ it('calls anonymous services without a cookie at all', function () {
 it('tells an unauthorized caller to authorize when STAG refuses', function () {
     Http::fake([ANY_STAG => Http::response('Unauthorized', 401)]);
 
-    expect(fn () => (new StagClient(User::factory()->create()))->get('oznameni/list'))
+    expect(fn () => (new StagHttpClient(User::factory()->create()))->get('oznameni/list'))
         ->toThrow(StagException::class, 'has not authorized IS-STAG');
 });
 
 it('tells a ticket holder to re-authorize when STAG refuses', function () {
     Http::fake([ANY_STAG => Http::response('Unauthorized', 401)]);
 
-    expect(fn () => (new StagClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
         ->toThrow(StagException::class, 'expired or been revoked');
 });
 
 it('reports a refused role separately from a refused ticket', function () {
     Http::fake([ANY_STAG => Http::response('Forbidden', 403)]);
 
-    expect(fn () => (new StagClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
         ->toThrow(StagException::class, 'refused the requested role');
 });
 
 it('reports an unreachable server', function () {
     Http::fake(fn () => throw new ConnectionException('timed out'));
 
-    expect(fn () => (new StagClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->get('oznameni/list'))
         ->toThrow(StagException::class, 'Could not reach');
 });
 
 it('expands array query values into repeated keys', function () {
     Http::fake([ANY_STAG => Http::response([])]);
 
-    (new StagClient(User::factory()->withStagToken()->create()))
+    (new StagHttpClient(User::factory()->withStagToken()->create()))
         ->put('oznameni/precteno', ['notiIdno' => [1, 2, 3]]);
 
     // Asserting on the URL, not $request['notiIdno']. Laravel runs the recorded
@@ -69,7 +69,7 @@ it('expands array query values into repeated keys', function () {
 it('returns an empty array when STAG sends no body', function () {
     Http::fake([ANY_STAG => Http::response('', 204)]);
 
-    $result = (new StagClient(User::factory()->withStagToken()->create()))
+    $result = (new StagHttpClient(User::factory()->withStagToken()->create()))
         ->put('oznameni/precteno', ['notiIdno' => [1]]);
 
     expect($result)->toBe([]);

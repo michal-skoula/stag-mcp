@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Enums\CalendarPeriod;
 use App\Models\User;
@@ -80,7 +80,7 @@ class GetHarmonogramTool extends Tool
             'year' => ['string', 'nullable'],
         ]);
 
-        $stag = new StagClient($user);
+        $stag = new StagHttpClient($user);
 
         try {
             // Reflects "now" regardless of the requested year, so it is

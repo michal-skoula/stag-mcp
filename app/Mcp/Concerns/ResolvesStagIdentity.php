@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Concerns;
 
-use App\Clients\StagClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 
 /**

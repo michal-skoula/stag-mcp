@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
@@ -168,7 +168,7 @@ class GetPredmetInfoTool extends Tool
         ], fn ($value) => $value !== null);
 
         try {
-            $row = (new StagClient($user))->get('predmety/getPredmetInfo', $params);
+            $row = (new StagHttpClient($user))->get('predmety/getPredmetInfo', $params);
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }

@@ -2,7 +2,7 @@
 
 namespace App\Services\Grades;
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 
 /**
@@ -17,7 +17,7 @@ use App\Exceptions\StagException;
  */
 final readonly class StudyRecordService
 {
-    public function __construct(private StagClient $stag) {}
+    public function __construct(private StagHttpClient $stag) {}
 
     /**
      * The student's complete history, never a slice: the retake and average

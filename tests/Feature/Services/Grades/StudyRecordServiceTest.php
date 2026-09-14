@@ -1,6 +1,6 @@
 <?php
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use App\Services\Grades\StudyRecordService;
@@ -16,7 +16,7 @@ use Tests\Fixtures\GradesFixtures;
  */
 function studyRecordService(): StudyRecordService
 {
-    return new StudyRecordService(new StagClient(User::factory()->withStagToken()->create()));
+    return new StudyRecordService(new StagHttpClient(User::factory()->withStagToken()->create()));
 }
 
 it('assembles a StudyRecord from the three STAG endpoints', function () {

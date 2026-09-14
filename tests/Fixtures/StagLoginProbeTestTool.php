@@ -2,7 +2,7 @@
 
 namespace Tests\Fixtures;
 
-use App\Clients\StagClient;
+use App\Contracts\StagClient;
 use App\Mcp\Concerns\RequiresStagLogin;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;

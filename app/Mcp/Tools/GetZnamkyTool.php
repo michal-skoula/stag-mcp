@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;

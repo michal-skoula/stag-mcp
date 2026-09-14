@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Enums\City;
 use App\Mcp\Enums\Location;
@@ -109,7 +109,7 @@ class GetBudovyTool extends Tool
         try {
             // TODO: this data changes very infrequently. Cache it with a
             //       long TTL rather than calling STAG on every request.
-            $budovy = (new StagClient($user))->get('mistnost/getBudovy');
+            $budovy = (new StagHttpClient($user))->get('mistnost/getBudovy');
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }

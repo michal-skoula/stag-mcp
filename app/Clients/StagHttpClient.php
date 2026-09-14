@@ -2,6 +2,7 @@
 
 namespace App\Clients;
 
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -14,9 +15,6 @@ use Illuminate\Support\Facades\Http;
 /**
  * Talks to the IS-STAG REST services on behalf of one user.
  *
- * Most services answer anonymous callers; the ones that do not are reached from a
- * tool using the RequiresStagLogin trait, which checks for a token up front.
- *
  * Authentication is the user's STAG ticket, sent as the WSCOOKIE cookie. STAG
  * accepts the same ticket via HTTP Basic (ticket as username, empty password),
  * but the cookie needs no encoding and the server keeps no session, so there is
@@ -24,12 +22,16 @@ use Illuminate\Support\Facades\Http;
  *
  * @see https://is-stag.zcu.cz/napoveda/web-services/ws_prihlasovani.html
  */
-final class StagClient
+readonly final class StagHttpClient implements StagClient
 {
-    /** @var string Base URL for all STAG endpoints. MUST END WITH A TRAILING SLASH! */
-    private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2/';
+    /** @var string Base URL for all STAG endpoints. */
+    private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
 
-    public function __construct(private readonly User $user) {}
+    /**
+     * @param User $user MCP Client user
+     * @param bool $showRealExceptions Make endpoints return real STAG errors instead of abstracted error messages
+     */
+    public function __construct(private User $user, private bool $showRealExceptions = false) {}
 
     /**
      * @param  array<string, mixed>  $query  Request's query string (&key=val)
@@ -85,13 +87,17 @@ final class StagClient
         } catch (ConnectionException $e) {
             throw StagException::unreachable($e);
         } catch (RequestException $e) {
-            throw match ($e->response->status()) {
-                401 => $this->hasStagToken()
-                    ? StagException::ticketRejected()
-                    : StagException::notAuthorized(),
-                403 => StagException::roleRejected(),
-                default => StagException::requestFailed($e->response->status(), $e),
-            };
+            if($this->showRealExceptions) {
+                throw new StagException('['.$e->response->status().']: '.$e->getMessage(), previous: $e);
+            } else {
+                throw match ($e->response->status()) {
+                    401 => $this->hasStagToken()
+                        ? StagException::ticketRejected()
+                        : StagException::notAuthorized(),
+                    403 => StagException::roleRejected(),
+                    default => StagException::requestFailed($e->response->status(), $e),
+                };
+            }
         }
     }
 
@@ -130,7 +136,10 @@ final class StagClient
      */
     private function request(): PendingRequest
     {
-        $r = Http::baseUrl(self::BASE_URL)->acceptJson();
+        // Normalizing to always include a trailing slash
+        $baseUrl = rtrim(self::BASE_URL, '/') . '/';
+
+        $r = Http::baseUrl($baseUrl)->acceptJson();
 
         return $this->hasStagToken()
             ? $r->withHeaders(['Cookie' => "WSCOOKIE={$this->user->stag_token}"])

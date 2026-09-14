@@ -2,7 +2,8 @@
 
 namespace App\Mcp\Concerns;
 
-use App\Clients\StagClient;
+use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
@@ -40,7 +41,7 @@ trait RequiresStagLogin
         }
 
         try {
-            return $this->handleForStagUser($request, new StagClient($user));
+            return $this->handleForStagUser($request, new StagHttpClient($user));
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }
