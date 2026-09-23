@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\SearchPredmetyTool;
 use App\Models\User;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 
 const STAG_GET_PREDMETY_BY_FAKULTA = 'stag-ws.zcu.cz/ws/services/rest2/predmety/getPredmetyByFakulta*';
@@ -204,4 +205,15 @@ it('errors when there is no authenticated user', function () {
         ->assertSee('must send a bearer token');
 
     Http::assertNothingSent();
+});
+
+it('names subjects in the pagination descriptions', function () {
+    $tool = new SearchPredmetyTool;
+    $input = $tool->schema(new JsonSchemaTypeFactory);
+    $output = $tool->outputSchema(new JsonSchemaTypeFactory);
+
+    expect($input['count']->toArray()['description'])->toContain('subjects')
+        ->and($input['offset']->toArray()['description'])->toContain('subjects')
+        ->and($output['total']->toArray()['description'])->toContain('subjects')
+        ->and($output['count']->toArray()['description'])->toContain('subjects');
 });

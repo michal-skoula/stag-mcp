@@ -4,6 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
+use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
 use App\Mcp\Enums\CalendarPeriod;
@@ -27,17 +28,12 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly]
 class GetKalendarTool extends Tool
 {
+    use PaginatesResponses;
     use RequiresStagLogin;
     use ResolvesStagIdentity;
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Frozvrhy
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fkalendar
-
-    /** How many days to return when count is not given. */
-    private const int DEFAULT_COUNT = 100;
-
-    /** Upper bound on count, so one call cannot return years of days at once. */
-    private const int MAX_COUNT = 500;
 
     /** Upper bound on date_from..date_to, so one call cannot pull several years of timetable. */
     private const int MAX_RANGE_DAYS = 400;
@@ -57,12 +53,7 @@ class GetKalendarTool extends Tool
             'include_empty_days' => $schema->boolean()
                 ->description('Include every day in the range, even ordinary teaching days with nothing scheduled. Off by default: only days carrying an event, or a reason nothing is scheduled (holiday, exam period, ...), are returned.')
                 ->default(false),
-            'count' => $schema->integer()
-                ->description('How many days to return, up to '.self::MAX_COUNT.'.')
-                ->min(1)->max(self::MAX_COUNT)->default(self::DEFAULT_COUNT),
-            'offset' => $schema->integer()
-                ->description('How many matching days to skip. Use with total from the previous response to page through the rest.')
-                ->min(0)->default(0),
+            ...$this->paginationInputSchema($schema, 'days'),
         ];
     }
 
@@ -78,9 +69,7 @@ class GetKalendarTool extends Tool
             'os_cislo' => $schema->string()->description('The osCislo this timetable was fetched for.'),
             'date_from' => $schema->string()->description('First date of the range, ISO.'),
             'date_to' => $schema->string()->description('Last date of the range, ISO.'),
-            'total' => $schema->integer()->description('Total matching days, before paging.'),
-            'offset' => $schema->integer()->description('The offset that was applied.'),
-            'count' => $schema->integer()->description('How many days are in this page.'),
+            ...$this->paginationOutputSchema($schema, 'days'),
             'days' => $schema->array()
                 ->description('Matching days, ascending.')
                 ->items($schema->object([
@@ -145,8 +134,7 @@ class GetKalendarTool extends Tool
             'date_to' => ['date_format:Y-m-d', 'nullable'],
             'os_cislo' => ['string', 'nullable'],
             'include_empty_days' => ['boolean', 'nullable'],
-            'count' => ['integer', 'min:1', 'max:'.self::MAX_COUNT, 'nullable'],
-            'offset' => ['integer', 'min:0', 'nullable'],
+            ...$this->paginationRules(),
         ]);
 
         $dateFrom = isset($validated['date_from']) ? Carbon::parse($validated['date_from']) : Carbon::today();
@@ -197,18 +185,11 @@ class GetKalendarTool extends Tool
             }
         }
 
-        $offset = $validated['offset'] ?? 0;
-        $count = $validated['count'] ?? self::DEFAULT_COUNT;
-        $page = array_slice($days, $offset, $count);
-
         return Response::structured([
             'os_cislo' => $osCislo,
             'date_from' => $dateFrom->toDateString(),
             'date_to' => $dateTo->toDateString(),
-            'total' => count($days),
-            'offset' => $offset,
-            'count' => count($page),
-            'days' => $page,
+            ...$this->paginate($days, $validated, 'days'),
         ]);
     }
 

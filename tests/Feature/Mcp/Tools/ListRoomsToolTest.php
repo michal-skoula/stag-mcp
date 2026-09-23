@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Models\User;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 
 const STAG_GET_MISTNOSTI_INFO = 'stag-ws.zcu.cz/ws/services/rest2/mistnost/getMistnostiInfo*';
@@ -207,4 +208,15 @@ it('rejects a room type outside the known set', function () {
         ->assertHasErrors();
 
     Http::assertNothingSent();
+});
+
+it('names rooms in the pagination descriptions', function () {
+    $tool = new ListRoomsTool;
+    $input = $tool->schema(new JsonSchemaTypeFactory);
+    $output = $tool->outputSchema(new JsonSchemaTypeFactory);
+
+    expect($input['count']->toArray()['description'])->toContain('rooms')
+        ->and($input['offset']->toArray()['description'])->toContain('rooms')
+        ->and($output['total']->toArray()['description'])->toContain('rooms')
+        ->and($output['count']->toArray()['description'])->toContain('rooms');
 });

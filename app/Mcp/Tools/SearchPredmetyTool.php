@@ -4,6 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
+use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
@@ -22,15 +23,10 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly]
 class SearchPredmetyTool extends Tool
 {
+    use PaginatesResponses;
     use RequiresStagLogin;
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fpredmety
-
-    /** How many subjects to return when count is not given. */
-    private const int DEFAULT_COUNT = 100;
-
-    /** Upper bound on count, so one call cannot return the whole catalog at once. */
-    private const int MAX_COUNT = 500;
 
     /**
      * @return array<string, Type>
@@ -50,15 +46,7 @@ class SearchPredmetyTool extends Tool
                 ->description('Academic year to filter by, e.g. "2026". Defaults to the current STAG year when omitted.'),
             'lang' => $schema->string()
                 ->description('Language code for translated fields, e.g. "en". Not validated — passed through as-is.'),
-            'count' => $schema->integer()
-                ->description('How many subjects to return, up to '.self::MAX_COUNT.'.')
-                ->min(1)
-                ->max(self::MAX_COUNT)
-                ->default(self::DEFAULT_COUNT),
-            'offset' => $schema->integer()
-                ->description('How many matching subjects to skip. Use with total from the previous response to page through the rest.')
-                ->min(0)
-                ->default(0),
+            ...$this->paginationInputSchema($schema, 'subjects'),
         ];
     }
 
@@ -70,12 +58,7 @@ class SearchPredmetyTool extends Tool
         $nullableBool = fn () => $schema->anyOf([$schema->boolean()])->nullable();
 
         return [
-            'total' => $schema->integer()
-                ->description('Total subjects matching the filters, before paging.'),
-            'offset' => $schema->integer()
-                ->description('The offset that was applied.'),
-            'count' => $schema->integer()
-                ->description('How many subjects are in this page.'),
+            ...$this->paginationOutputSchema($schema, 'subjects'),
             'subjects' => $schema->array()
                 ->description('Matching subjects. Only identifying and offering fields are included — call get-predmet-info for full detail.')
                 ->items($schema->object([
@@ -106,8 +89,7 @@ class SearchPredmetyTool extends Tool
             'fakulta' => ['string', 'nullable'],
             'rok' => ['string', 'nullable'],
             'lang' => ['string', 'nullable'],
-            'count' => ['integer', 'min:1', 'max:'.self::MAX_COUNT, 'nullable'],
-            'offset' => ['integer', 'min:0', 'nullable'],
+            ...$this->paginationRules(),
         ]);
 
         $params = array_filter([
@@ -130,16 +112,9 @@ class SearchPredmetyTool extends Tool
             fn (array $row) => $this->matchesFilters($row, $validated),
         ));
 
-        $offset = $validated['offset'] ?? 0;
-        $count = $validated['count'] ?? self::DEFAULT_COUNT;
-        $page = array_slice($rows, $offset, $count);
-
-        return Response::structured([
-            'total' => count($rows),
-            'offset' => $offset,
-            'count' => count($page),
-            'subjects' => array_map($this->toSubject(...), $page),
-        ]);
+        return Response::structured(
+            $this->paginate($rows, $validated, 'subjects', $this->toSubject(...)),
+        );
     }
 
     /**

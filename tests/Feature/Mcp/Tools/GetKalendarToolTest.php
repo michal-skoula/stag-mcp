@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetKalendarTool;
 use App\Models\User;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 
@@ -610,4 +611,15 @@ it('handles an empty result without erroring', function () {
         ->assertHasNoErrors()
         ->assertSee('"total":0')
         ->assertSee('"count":0');
+});
+
+it('names days in the pagination descriptions', function () {
+    $tool = new GetKalendarTool;
+    $input = $tool->schema(new JsonSchemaTypeFactory);
+    $output = $tool->outputSchema(new JsonSchemaTypeFactory);
+
+    expect($input['count']->toArray()['description'])->toContain('days')
+        ->and($input['offset']->toArray()['description'])->toContain('days')
+        ->and($output['total']->toArray()['description'])->toContain('days')
+        ->and($output['count']->toArray()['description'])->toContain('days');
 });
