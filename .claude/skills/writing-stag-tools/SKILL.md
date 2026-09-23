@@ -60,7 +60,7 @@ Document every non-obvious finding from this pass as a terse bullet in `stag-qui
 | STAG tolerates anonymous calls | STAG needs a real ticket |
 |---|---|
 | `handle(Request $request, #[CurrentUser('sanctum')] ?User $user = null)`, manual `if ($user === null) return Response::error('No authenticated user. The MCP client must send a bearer token.')`, call `new StagClient($user)` directly, catch `StagException` yourself. | `use RequiresStagLogin;`, implement `protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response` instead of `handle()`. The trait handles the no-user/no-token/expired-token errors and the `StagException` catch for you. |
-| See `GetBudovyTool`, `GetPredmetInfoTool` | See `GetMistnostiTool`, `SearchPredmetyTool` |
+| See `GetBudovyTool`, `GetPredmetInfoTool` | See `ListRoomsTool`, `SearchPredmetyTool` |
 
 Either way, all STAG HTTP calls go through `App\Clients\StagClient`, either `(new StagClient($user))->get('namespace/method', $params)` or `$stag->get(...)` inside `handleForStagUser`. Never call `Http::` directly from a tool.
 

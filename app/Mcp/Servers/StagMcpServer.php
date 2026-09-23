@@ -5,10 +5,10 @@ namespace App\Mcp\Servers;
 use App\Mcp\Tools\GetBudovyTool;
 use App\Mcp\Tools\GetHarmonogramTool;
 use App\Mcp\Tools\GetKalendarTool;
-use App\Mcp\Tools\GetMistnostiTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
 use App\Mcp\Tools\GetZnamkyTool;
 use App\Mcp\Tools\ListNotificationsTool;
+use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
 use App\Mcp\Tools\SearchPredmetyTool;
 use App\Mcp\Tools\StudyAdvisorTool;
@@ -26,7 +26,7 @@ class StagMcpServer extends Server
         ListNotificationsTool::class,
         MarkNotificationsReadTool::class,
         GetBudovyTool::class,
-        GetMistnostiTool::class,
+        ListRoomsTool::class,
         SearchPredmetyTool::class,
         GetPredmetInfoTool::class,
         GetHarmonogramTool::class,

@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetMistnostiTool;
+use App\Mcp\Tools\ListRoomsTool;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
@@ -48,7 +48,7 @@ it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class)
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -58,35 +58,44 @@ it('sends the exact-match filters STAG expects', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, [
-            'zkr_budovy' => 'UL',
-            'cislo_mistnosti' => '103',
-            'pracoviste' => 'Katedra konstruování strojů',
-            'typ' => 'Učebna',
+        ->tool(ListRoomsTool::class, [
+            'building_shortcode' => 'UL',
+            'room_number' => '103',
+            'department' => 'KKS',
+            'room_type' => 'Učebna',
         ])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['zkrBudovy'] === 'UL'
         && $request['cisloMistnosti'] === '103'
-        && $request['pracoviste'] === 'Katedra konstruování strojů'
-        && $request['typ'] === 'Učebna');
+        && $request['pracoviste'] === 'KKS');
 });
 
-it('defaults jen_platne to true', function () {
+it('translates the room type label into the numeric code STAG filters on', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class, ['room_type' => 'Laboratoř'])
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request['typ'] === '4');
+});
+
+it('defaults only_valid to true', function () {
+    Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(ListRoomsTool::class)
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['jenPlatne'] === 'true');
 });
 
-it('sends jen_platne as false when asked to include invalid rooms', function () {
+it('sends only_valid as false when asked to include decommissioned rooms', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, ['jen_platne' => false])
+        ->tool(ListRoomsTool::class, ['only_valid' => false])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['jenPlatne'] === 'false');
@@ -96,13 +105,13 @@ it('maps rooms into the narrowed field set with nested coordinates', function ()
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => [stagMistnost()]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class)
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"offset":0')
         ->assertSee('"count":1')
-        ->assertSee('"zkr_budovy":"UL"')
-        ->assertSee('"cislo_mistnosti":"103"')
+        ->assertSee('"building_shortcode":"UL"')
+        ->assertSee('"room_number":"103"')
         ->assertSee('"coordinates":{"latitude":49.7253292,"longitude":13.3507753}')
         ->assertDontSee('spolecny_fond')
         ->assertDontSee('plocha')
@@ -110,15 +119,15 @@ it('maps rooms into the narrowed field set with nested coordinates', function ()
         ->assertDontSee('url_budova');
 });
 
-it('always includes poznamka', function () {
+it('always includes the note', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response([
         'mistnostInfo' => [stagMistnost(['poznamka' => 'černá tabule, projektor'])],
     ])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class)
         ->assertOk()
-        ->assertSee('"poznamka":"černá tabule, projektor"');
+        ->assertSee('"note":"černá tabule, projektor"');
 });
 
 it('defaults to the first 100 rooms', function () {
@@ -130,7 +139,7 @@ it('defaults to the first 100 rooms', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class)
         ->assertOk()
         ->assertSee('"total":150')
         ->assertSee('"offset":0')
@@ -146,7 +155,7 @@ it('honours a custom count', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, ['count' => 3])
+        ->tool(ListRoomsTool::class, ['count' => 3])
         ->assertOk()
         ->assertSee('"total":10')
         ->assertSee('"count":3');
@@ -161,19 +170,19 @@ it('pages through results with offset', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, ['count' => 3, 'offset' => 9])
+        ->tool(ListRoomsTool::class, ['count' => 3, 'offset' => 9])
         ->assertOk()
         ->assertSee('"total":10')
         ->assertSee('"offset":9')
         ->assertSee('"count":1')
-        ->assertSee('"cislo_mistnosti":"10"');
+        ->assertSee('"room_number":"10"');
 });
 
 it('rejects a count above the maximum', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, ['count' => 501])
+        ->tool(ListRoomsTool::class, ['count' => 501])
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -183,18 +192,18 @@ it('returns an empty list without erroring', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class)
+        ->tool(ListRoomsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0')
         ->assertSee('"count":0');
 });
 
-it('rejects a typ outside the known set', function () {
+it('rejects a room type outside the known set', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetMistnostiTool::class, ['typ' => 'Kuchyň'])
+        ->tool(ListRoomsTool::class, ['room_type' => 'Kuchyň'])
         ->assertHasErrors();
 
     Http::assertNothingSent();

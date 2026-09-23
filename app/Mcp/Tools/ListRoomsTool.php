@@ -18,11 +18,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('search-mistnosti')]
-#[Title('Search Mistnosti')]
-#[Description('Searches STAG rooms by building, workplace, or type. Results are paged; use offset to see more than the first count rows.')]
+#[Name('list-rooms')]
+#[Title('List Rooms')]
+#[Description('List university rooms, offices, lecture halls etc. by building, department, or type. Results are paged; use offset to see more than the first count rows.')]
 #[IsReadOnly]
-class GetMistnostiTool extends Tool
+class ListRoomsTool extends Tool
 {
     use RequiresStagLogin;
 
@@ -40,17 +40,17 @@ class GetMistnostiTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'zkr_budovy' => $schema->string()
-                ->description('Building abbreviation to filter by, e.g. "UL".'),
-            'cislo_mistnosti' => $schema->string()
+            'building_shortcode' => $schema->string()
+                ->description('Building abbreviation to filter by, e.g. "UL", "UC".'),
+            'room_number' => $schema->string()
                 ->description('Room number to filter by, e.g. "409".'),
-            'pracoviste' => $schema->string()
-                ->description('Workplace/department name to filter by.'),
-            'typ' => $schema->string()
+            'department' => $schema->string()
+                ->description('Department abbreviation to filter by, e.g. "KIV". STAG matches the abbreviation only, so the full workplace name returns nothing.'),
+            'room_type' => $schema->string()
                 ->description('Room type to filter by.')
                 ->enum(RoomType::class),
-            'jen_platne' => $schema->boolean()
-                ->description('Only show currently valid rooms.')
+            'only_valid' => $schema->boolean()
+                ->description('Exclude rooms taken out of service, meaning their end-of-operation date has passed. Set false to include them, which adds roughly 485 rooms university-wide.')
                 ->default(true),
             'count' => $schema->integer()
                 ->description('How many rooms to return, up to '.self::MAX_COUNT.'.')
@@ -79,15 +79,15 @@ class GetMistnostiTool extends Tool
             'rooms' => $schema->array()
                 ->description('Matching rooms.')
                 ->items($schema->object([
-                    'zkr_budovy' => $schema->string()->description('Building abbreviation.'),
-                    'cislo_mistnosti' => $schema->string()->description('Room number.'),
-                    'typ' => $schema->string()->description('Room type.'),
-                    'kapacita' => $schema->integer()->description('Seating capacity.'),
-                    'podlazi' => $schema->string()->description('Floor.'),
-                    'pracoviste' => $schema->string()->description('Workplace/department the room belongs to.'),
-                    'katedra' => $schema->string()->description('Department abbreviation.'),
+                    'building_shortcode' => $schema->string()->description('Building abbreviation.'),
+                    'room_number' => $schema->string()->description('Room number.'),
+                    'room_type' => $schema->string()->description('Room type.'),
+                    'capacity' => $schema->integer()->description('Seating capacity.'),
+                    'floor' => $schema->string()->description('Floor.'),
+                    'workplace' => $schema->string()->description('Full name of the workplace the room belongs to.'),
+                    'department' => $schema->string()->description('Department abbreviation, e.g. "KIV".'),
                     'address' => $schema->string()->description('Full building address.'),
-                    'poznamka' => $schema->anyOf([$schema->string()])->description('Free-text note, or null.')->nullable(),
+                    'note' => $schema->anyOf([$schema->string()])->description('Free-text note, or null.')->nullable(),
                     'coordinates' => $schema->object([
                         'latitude' => $schema->anyOf([$schema->number()])->description('Building latitude, or null.')->nullable(),
                         'longitude' => $schema->anyOf([$schema->number()])->description('Building longitude, or null.')->nullable(),
@@ -104,23 +104,27 @@ class GetMistnostiTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
-            'zkr_budovy' => ['string', 'nullable'],
-            'cislo_mistnosti' => ['string', 'nullable'],
-            'pracoviste' => ['string', 'nullable'],
-            'typ' => ['string', 'nullable', new Enum(RoomType::class)],
-            'jen_platne' => ['boolean', 'nullable'],
+            'building_shortcode' => ['string', 'nullable'],
+            'room_number' => ['string', 'nullable'],
+            'department' => ['string', 'nullable'],
+            'room_type' => ['string', 'nullable', new Enum(RoomType::class)],
+            'only_valid' => ['boolean', 'nullable'],
             'count' => ['integer', 'min:1', 'max:'.self::MAX_COUNT, 'nullable'],
             'offset' => ['integer', 'min:0', 'nullable'],
         ]);
 
+        $roomType = isset($validated['room_type'])
+            ? RoomType::from($validated['room_type'])->code()
+            : null;
+
         $params = array_filter([
-            'zkrBudovy' => $validated['zkr_budovy'] ?? null,
-            'cisloMistnosti' => $validated['cislo_mistnosti'] ?? null,
-            'pracoviste' => $validated['pracoviste'] ?? null,
-            'typ' => $validated['typ'] ?? null,
+            'zkrBudovy' => $validated['building_shortcode'] ?? null,
+            'cisloMistnosti' => $validated['room_number'] ?? null,
+            'pracoviste' => $validated['department'] ?? null,
+            'typ' => $roomType,
         ], fn ($value) => $value !== null);
 
-        $params['jenPlatne'] = $this->toStagBoolean($validated['jen_platne'] ?? true);
+        $params['jenPlatne'] = $this->toStagBoolean($validated['only_valid'] ?? true);
 
         $rooms = $stag->get('mistnost/getMistnostiInfo', $params);
 
@@ -149,15 +153,15 @@ class GetMistnostiTool extends Tool
     private function toRoom(array $row): array
     {
         return [
-            'zkr_budovy' => $row['zkrBudovy'],
-            'cislo_mistnosti' => $row['cisloMistnosti'],
-            'typ' => $row['typ'],
-            'kapacita' => $row['kapacita'],
-            'podlazi' => $row['podlazi'],
-            'pracoviste' => $row['pracoviste'],
-            'katedra' => $row['katedra'],
+            'building_shortcode' => $row['zkrBudovy'],
+            'room_number' => $row['cisloMistnosti'],
+            'room_type' => $row['typ'],
+            'capacity' => $row['kapacita'],
+            'floor' => $row['podlazi'],
+            'workplace' => $row['pracoviste'],
+            'department' => $row['katedra'],
             'address' => $row['adresaBudovy'],
-            'poznamka' => $row['poznamka'] ?? null,
+            'note' => $row['poznamka'] ?? null,
             'coordinates' => [
                 'latitude' => $row['budovaGPSY'] ?? null,
                 'longitude' => $row['budovaGPSX'] ?? null,
