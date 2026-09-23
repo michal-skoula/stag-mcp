@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\UserInfoTool;
+use App\Mcp\Tools\WhoAmITool;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
@@ -140,7 +140,7 @@ it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -153,7 +153,7 @@ it('returns the name and the study detail behind a student ticket', function () 
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertSee('"full":"Michal ŠKOULA"')
         ->assertSee('"os_cislo":"A25B0093P"')
@@ -172,7 +172,7 @@ it('fetches the student detail for the role row osCislo', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk();
 
     Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getStudentInfo')
@@ -186,7 +186,7 @@ it('drops the card number and the other fields STAG volunteers', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertDontSee('042b15b2b07a80')
         ->assertDontSee('cisloKarty')
@@ -204,7 +204,7 @@ it('never asks STAG for the personal data endpoint', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertDontSee('rodneCislo');
 
@@ -222,7 +222,7 @@ it('describes both halves of a dual-role account', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertSee('"full":"JUDr. Miroslav Chupáč"')
         ->assertSee('"ucit_idno":283755')
@@ -241,7 +241,7 @@ it('keeps the role row when the teacher detail comes back empty', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertSee('"role":"VY"')
         ->assertSee('"katedra":"KPO"')
@@ -255,7 +255,7 @@ it('keeps the role row when the detail call is refused', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"os_cislo":"A25B0093P"')
@@ -269,7 +269,7 @@ it('falls back to the raw code when STAG sends an unknown one', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertSee('"state":"X"');
 });
@@ -278,7 +278,7 @@ it('handles an account with no roles at all', function () {
     Http::fake([STAG_USER_LIST_V2 => Http::response(whoAmIUserList([]))]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(UserInfoTool::class)
+        ->tool(WhoAmITool::class)
         ->assertOk()
         ->assertSee('"roles":[]');
 });

@@ -24,7 +24,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[Title('Who Am I')]
 #[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form and state (use get-study-advisor for the referentka); a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-znamky and get-kalendar accept. Takes no arguments - it always describes the account behind the ticket.')]
 #[IsReadOnly]
-class UserInfoTool extends Tool
+class WhoAmITool extends Tool
 {
     use RequiresStagLogin;
     use ResolvesStagIdentity;
