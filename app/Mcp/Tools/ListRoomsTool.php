@@ -4,6 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
+use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Enums\RoomType;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -24,15 +25,10 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly]
 class ListRoomsTool extends Tool
 {
+    use PaginatesResponses;
     use RequiresStagLogin;
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fmistnost
-
-    /** How many rooms to return when count is not given. */
-    private const int DEFAULT_COUNT = 100;
-
-    /** Upper bound on count, so one call cannot return STAG's entire unfiltered table. */
-    private const int MAX_COUNT = 500;
 
     /**
      * @return array<string, Type>
@@ -52,15 +48,7 @@ class ListRoomsTool extends Tool
             'only_valid' => $schema->boolean()
                 ->description('Exclude rooms taken out of service, meaning their end-of-operation date has passed. Set false to include them, which adds roughly 485 rooms university-wide.')
                 ->default(true),
-            'count' => $schema->integer()
-                ->description('How many rooms to return, up to '.self::MAX_COUNT.'.')
-                ->min(1)
-                ->max(self::MAX_COUNT)
-                ->default(self::DEFAULT_COUNT),
-            'offset' => $schema->integer()
-                ->description('How many matching rooms to skip. Use with total from the previous response to page through the rest.')
-                ->min(0)
-                ->default(0),
+            ...$this->paginationInputSchema($schema, 'rooms'),
         ];
     }
 
@@ -70,12 +58,7 @@ class ListRoomsTool extends Tool
     public function outputSchema(JsonSchema $schema): array
     {
         return [
-            'total' => $schema->integer()
-                ->description('Total rooms matching the filters, before paging.'),
-            'offset' => $schema->integer()
-                ->description('The offset that was applied.'),
-            'count' => $schema->integer()
-                ->description('How many rooms are in this page.'),
+            ...$this->paginationOutputSchema($schema, 'rooms'),
             'rooms' => $schema->array()
                 ->description('Matching rooms.')
                 ->items($schema->object([
@@ -109,8 +92,7 @@ class ListRoomsTool extends Tool
             'department' => ['string', 'nullable'],
             'room_type' => ['string', 'nullable', new Enum(RoomType::class)],
             'only_valid' => ['boolean', 'nullable'],
-            'count' => ['integer', 'min:1', 'max:'.self::MAX_COUNT, 'nullable'],
-            'offset' => ['integer', 'min:0', 'nullable'],
+            ...$this->paginationRules(),
         ]);
 
         $roomType = isset($validated['room_type'])
@@ -128,17 +110,9 @@ class ListRoomsTool extends Tool
 
         $rooms = $stag->get('mistnost/getMistnostiInfo', $params);
 
-        $rows = $rooms['mistnostInfo'] ?? [];
-        $offset = $validated['offset'] ?? 0;
-        $count = $validated['count'] ?? self::DEFAULT_COUNT;
-        $page = array_slice($rows, $offset, $count);
-
-        return Response::structured([
-            'total' => count($rows),
-            'offset' => $offset,
-            'count' => count($page),
-            'rooms' => array_map($this->toRoom(...), $page),
-        ]);
+        return Response::structured(
+            $this->paginate($rooms['mistnostInfo'] ?? [], $validated, 'rooms', $this->toRoom(...)),
+        );
     }
 
     private function toStagBoolean(bool $value): string

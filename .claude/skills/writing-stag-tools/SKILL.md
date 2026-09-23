@@ -64,7 +64,7 @@ Document every non-obvious finding from this pass as a terse bullet in `stag-qui
 
 Either way, all STAG HTTP calls go through `App\Clients\StagClient`, either `(new StagClient($user))->get('namespace/method', $params)` or `$stag->get(...)` inside `handleForStagUser`. Never call `Http::` directly from a tool.
 
-**Search-then-pinpoint**, when the namespace has both: one tool that searches/lists with pagination (`count`/`offset`, `DEFAULT_COUNT = 100`, `MAX_COUNT = 500` as class consts, validated in both the JSON schema `min()/max()/default()` *and* the `$request->validate()` rules, kept in sync), and a separate tool that fetches full detail for one identified record. Mention the pairing in each tool's `#[Description]` (e.g. "Use get-predmet-info afterward for full detail").
+**Search-then-pinpoint**, when the namespace has both: one tool that searches/lists with pagination (`use PaginatesResponses;`: spread `paginationInputSchema($schema, 'rooms')`, `paginationOutputSchema($schema, 'rooms')` and `paginationRules()` into the schema, output schema and validate rules, then return `$this->paginate($rows, $validated, 'rooms', $this->toRoom(...))`; defaults to 100, capped at 500, override `paginationDefault()`/`paginationMax()` to change them), and a separate tool that fetches full detail for one identified record. Mention the pairing in each tool's `#[Description]` (e.g. "Use get-predmet-info afterward for full detail").
 
 ## 3. Write it
 
