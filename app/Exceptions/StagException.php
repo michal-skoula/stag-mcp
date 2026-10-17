@@ -38,6 +38,11 @@ class StagException extends Exception
         return new self("IS-STAG returned an unexpected HTTP {$status}.", previous: $previous);
     }
 
+    public static function emptyResponse(string $what): self
+    {
+        return new self("IS-STAG returned an empty {$what}, which only happens when its web services are misbehaving. Try again later.");
+    }
+
     public static function unreachable(?Throwable $previous = null): self
     {
         return new self('Could not reach the IS-STAG web services.', previous: $previous);
