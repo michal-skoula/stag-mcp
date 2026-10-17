@@ -6,6 +6,7 @@ use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
+use App\Services\Teachers\BusinessCard;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Str;
@@ -110,67 +111,22 @@ class StudyAdvisorTool extends Tool
         }
 
         /*
-         * Not returned: nothing this server exposes accepts a ucitIdno, and it
-         * means nothing to a reader. It is fetched because it is the only key
-         * the business card can be looked up by.
+         * Not returned: get-ucitel-info would take it, but for a referentka it
+         * adds nothing this tool doesn't already answer, and it means nothing
+         * to a reader. It is fetched because it is the only key the business
+         * card can be looked up by.
          */
         $teacherId = $info['studReferentkaUcitidno'] ?? null;
-        $card = $teacherId === null ? null : $this->fetchCard($stag, $teacherId);
+        $card = $teacherId === null ? null : BusinessCard::fetch($stag, $teacherId);
 
         return [
             'name' => $info['studReferentkaPrijmeniJmeno'],
             'email' => $info['studReferentkaEmail'] ?? null,
             'phone' => $info['studReferentkaTelefon'] ?? null,
-            'offices' => $this->toOffices($card),
+            'offices' => $card?->offices() ?? [],
             'office_hours_note' => $this->officeHoursNote($info),
-            'card_updated' => $card['info']['update'] ?? null,
+            'card_updated' => $card?->updated(),
         ];
-    }
-
-    /**
-     * The business card, which is the only place STAG records where someone
-     * sits: `getUcitelInfo`'s own zkrBudovy and cisloMistnosti are null even
-     * for staff whose card carries a building and room. Its `uredniHodiny`
-     * block is read and discarded on purpose, see officeHoursNote() below.
-     *
-     * Degrades to null rather than failing the tool, so a refused or missing
-     * card still leaves the name, email and phone answerable.
-     *
-     * @return array<string, mixed>|null
-     */
-    private function fetchCard(StagClient $stag, string $teacherId): ?array
-    {
-        try {
-            $card = $stag->get('vizitka/getVizitkaByUcitidno', ['ucitidno' => $teacherId]);
-        } catch (StagException) {
-            return null;
-        }
-
-        return $card === [] ? null : $card;
-    }
-
-    /**
-     * STAG lists one phone-directory row per line and repeats the room on each,
-     * so a person with two lines in one office yields two identical locations.
-     *
-     * @param  array<string, mixed>|null  $card
-     * @return array<int, array<string, mixed>>
-     */
-    private function toOffices(?array $card): array
-    {
-        $offices = [];
-
-        foreach ($card['tsLinky']['linky'] ?? [] as $line) {
-            $office = [
-                'building' => $line['budova'] ?? null,
-                'room' => $line['mistnost'] ?? null,
-                'workplace' => $line['zkratkaPracoviste'] ?? null,
-            ];
-
-            $offices[implode('|', array_map(strval(...), $office))] = $office;
-        }
-
-        return array_values($offices);
     }
 
     /**

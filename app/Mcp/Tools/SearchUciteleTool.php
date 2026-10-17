@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('search-ucitele')]
 #[Title('Search Ucitele')]
-#[Description('Finds teachers and other university staff by name, department, or both. Name matching ignores case, diacritics and word order ("sperlova", "Denisa Šperlová"). Best matches come first. Returns teacher_id, the handle other tools use for a person. People flagged active: false are still returned on purpose: STAG marks student demonstrators and doctoral assistants inactive while they run labs, so an inactive match may well be the person the user means. Results are paged; use offset to see more than the first count rows.')]
+#[Description('Finds teachers and other university staff by name, department, or both. Name matching ignores case, diacritics and word order ("sperlova", "Denisa Šperlová"). Best matches come first. Returns teacher_id, the handle other tools use for a person; pass it to get-ucitel-info for their office, phone and the programmes they guarantee. People flagged active: false are still returned on purpose: STAG marks student demonstrators and doctoral assistants inactive while they run labs, so an inactive match may well be the person the user means. Results are paged; use offset to see more than the first count rows.')]
 #[IsReadOnly]
 class SearchUciteleTool extends Tool
 {
