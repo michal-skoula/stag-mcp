@@ -94,10 +94,46 @@ description: "Load every time when working with the STAG api, writing tools for 
 - A third of the university writes the office hours off in their own `poznamka`: 218 of 664 people (FAV 43/120, FPR 26/49) say some form of mail/domluva/dohoda/zavolat/Teams instead. Matched against lived experience — teachers list hours and then tell students to message them regardless — so `getUredniHodinyPracoviste` is recorded, not observed, behaviour. Deliberately not wrapped in a tool; see the todo entry.
 
 - `programy` splits cleanly by auth: the catalogue endpoints (`getStudijniProgramy`, `getStudijniProgramInfo`, `getOborInfo`, `getPlanyOboru`, `getSegmentyPlanu`, `getBlokyPlanu`, `getBlokInfo`) answer anonymously, while `getPlanyStudenta` 401s anonymously and **403s for a foreign `osCislo`** — a real identity check, unlike `soubory` and `znamky/getZnamkyByStudent`. No `stagUser` param anywhere in the namespace.
-- `programy/getStudijniProgramy` with zero filters returns all 514 programmes university-wide rather than erroring (`fakulta=FAV, pouzePlatne=true` narrows to 53), same shape as `predmety/getPredmetyByFakulta`.
+- `programy/getStudijniProgramy` with zero filters returns all 515 programmes university-wide rather than erroring (`fakulta=FAV, pouzePlatne=true` narrows to 53), same shape as `predmety/getPredmetyByFakulta`.
 - The `programy` tree is program (`stprIdno`) → obor (`oborIdno`) → plán (`stplIdno`) → segment (`sespIdno`) → blok (`blokIdno`). `getPlanyStudenta` is the only entry point that starts from a student, and returned exactly one `planInfo` for a first-year.
 - `programy/getBlokInfo` and `getBlokyPlanu` return **no subject list** — a blok is only its credit rule (`statut` A/B/C, `minKred`, `minPocetPredmetu`). The subjects that satisfy it live in `vsp/getStudijniPlan`, so `programy` alone cannot answer "what do I still need to take".
 - `programy/getStudijniProgramInfo` is 87 fields (40 filled, ~5 KB per programme) of accreditation and marketing prose: `profilAbsolventaCz/An`, `moznePracovniPoziceCz/An`, `pozadavkyNaPrijeti*`, `akreditace*`. `getOborInfo` is 59 fields but only 18 filled on a post-novela programme, since the obor-level prose moved to the programme. Pick fields deliberately rather than passing either through.
+- `programy` is 14 endpoints in total; besides the ones above: `getOboryStudijnihoProgramu` (obory of a programme), `getPlanInfo`, `getSegmentInfo`, `getBlokySegmentu`, `getOblastiVzdelavaniProgramu` (one line, e.g. `"Informatika (100%)"`) and `getOboryQRAMInfo`. All answer in ~0.02s.
+- Plans are **re-issued every academic year**, one per intake year. `getPlanyOboru?oborIdno=4608&rok=2026` returns four plans (`stplIdno` 25289/25224/25225/25226), all `rokPlatnosti: "2026"`, distinguished only by `verze` = the intake year (2026/2025/2024/2023). The same obor with `rok=2023` returns a single, different plan (21050, verze 2023). So the 2023 intake sits on a new `stplIdno` every year — matches `vsp/getStudent`'s per-year `stplIdno`. To find the plan for someone, filter by the current `rok` and their `verze`; never take the newest version.
+- `programy`'s `lang=en` only half-translates: enum-ish labels (`typ` Bachelor, `forma` Full-time, `jazyk` Czech, `titul`) and `cile` switch to English, but `profil` stays `"akademický"`, `*Cz` prose stays Czech, and the `*An` prose fields (`profilAbsolventaAn`, `pozadavkyNaPrijetiAn`, `moznePracovniPoziceAn`, ...) are filled with literal asterisk placeholders (`"*********"`). Treat an asterisks-only value as empty.
+- `programy/getOboryQRAMInfo` is the qualification framework per obor (74 fields: `predpoklady*`/`vystupy*`/`vyucMetody*`/`hodMetody*` for Znalosti/Dovednosti/Zpusobilosti, cs+en). Mostly empty: of 75 current FAV obory, all fill identity fields but only 8-9 fill any outcomes, and English outcome fields are often `"N/A, N/A, …"`. Requires `fakulta` or `oborIdno` (500 "Musi byt zadana bud fakulta a nebo oborIdno" otherwise); first call took 2.7s, the FAV list is 233 KB. Not worth wrapping.
+- `programy/getPlanyStudenta` returns `planInfoListType`, the same shape as `getPlanyOboru` — no extra student-specific fields.
+- Segments are shared building blocks: a FAV bachelor plan had four — the programme's common segment (shared by its obory), the obor's own, a faculty-wide one (`FAV bc. - společná neoborová výuka`: languages, PE) and `EU Track-Level1`. Block minima don't add up to the plan's `limitKreditu` (165 of 180 on Počítačové vědy); the rest is free choice.
+
+`programy` tree, with real values (Informatika Bc., FAV, fetched 2026-10-21):
+
+```
+PROGRAMME  stprIdno 2209 "Informatika" B0613A140036   Bc. · 3y (max 5) · 180 kr · garant ucitIdno 55947 · accreditation to 2033
+├── OBOR  oborIdno 4608 "Počítačové vědy" PV23bp      diploma name cs/en, limitKreditu 180
+│   ├── PLAN stplIdno 25289  verze 2026 ┐
+│   ├── PLAN stplIdno 25224  verze 2025 │ all rokPlatnosti 2026; new stplIdno every year
+│   ├── PLAN stplIdno 25225  verze 2024 │
+│   └── PLAN stplIdno 25226  verze 2023 ┘  pocetSemestru 6 · limitKreditu 180
+│       ├── SEGMENT "Informatika - společné"
+│       │   ├── BLOK A Povinné předměty          minKred 79, minPocetPredmetu 15
+│       │   ├── BLOK A Státní závěrečná zkouška
+│       │   └── BLOK C Doporučené předměty
+│       ├── SEGMENT "Počítačové vědy"
+│       │   ├── BLOK A Povinné předměty          minKred 49, minPocetPredmetu 11
+│       │   ├── BLOK A Státní závěrečná zkouška
+│       │   ├── BLOK B Skupina 1 / 2 / 3         minKred 12 / 15 / 4
+│       │   └── BLOK C Doporučené předměty
+│       ├── SEGMENT "FAV bc. - společná neoborová výuka"
+│       │   ├── BLOK A Cizí jazyk - povinný      minKred 4, minPocetPredmetu 1
+│       │   ├── BLOK B Tělesná výchova           minKred 2
+│       │   └── BLOK C Cizí jazyk - doporučený
+│       └── SEGMENT "EU Track-Level1"
+│           └── BLOK C EU Track-Level1
+│               (no subjects in programy — they live in vsp/getStudijniPlan)
+└── OBOR  oborIdno 4609 "Výpočetní technika" VT23bp   same shape
+
+Entry from a student: ticket → getPlanyStudenta → current stplIdno → walk down + vsp for subjects
+```
 - `vsp/getStudijniPlan?stplIdno=` is anonymous and is the real study-plan payload (276 KB for one bachelor plan): segments → `bloky` → `predmety`, each subject carrying `doporucenyRocnik`, `doporucenySemestr`, `kredity`, `rozsah`, `typZk`, plus `podminujiciPredmety`, `vyloucenePredmety`, `nahrazovanePredmety` and `doporucenePredmety`. Free text comes as `{valueCs, valueEn}` pairs rather than a `lang` param.
 - `vsp` payloads carry presentation HTML in the data: `zkratkaProZobrazeni` is `"KIV<span>/</span>BPSWI"`, and blok rows duplicate `statut` into `statutA`/`statutB`/`statutC`/`statutX` booleans. Strip the markup, read `pracZkr`/`zkrPredm` instead.
 - `vsp/getStudent` is **broken as JSON**: `StudentVRoce["student"]` points back at `Student["rokyStudia"]`, so Jackson recurses until it gives up and the 104 KB body ends mid-structure with the cycle trace appended (`Infinite recursion (StackOverflowError)`). It parses at no `json_decode` depth — 512 hits max depth, higher depths hit a syntax error, because the bytes really are truncated. `Accept: application/xml` returns a clean 31 KB document instead. First endpoint found that needs XML.
