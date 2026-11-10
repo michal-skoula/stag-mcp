@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
@@ -78,7 +78,7 @@ class StudyAdvisorTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'os_cislo' => ['string', 'nullable'],
@@ -104,7 +104,7 @@ class StudyAdvisorTool extends Tool
      *
      * @throws StagException
      */
-    private function toAdvisor(array $info, StagClient $stag): ?array
+    private function toAdvisor(array $info, StagHttpClient $stag): ?array
     {
         if (blank($info['studReferentkaPrijmeniJmeno'] ?? null)) {
             return null;

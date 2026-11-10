@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
@@ -127,7 +127,7 @@ class GetKalendarTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'date_from' => ['date_format:Y-m-d', 'nullable'],
@@ -202,7 +202,7 @@ class GetKalendarTool extends Tool
      *
      * @throws StagException
      */
-    private function fetchKalendarRange(StagClient $stag, Carbon $from, Carbon $to): array
+    private function fetchKalendarRange(StagHttpClient $stag, Carbon $from, Carbon $to): array
     {
         $years = array_unique([$this->academicYearFor($from), $this->academicYearFor($to)]);
 

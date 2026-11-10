@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Services\Teachers\BusinessCard;
@@ -86,7 +86,7 @@ class GetUcitelInfoTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
@@ -218,7 +218,7 @@ class GetUcitelInfoTool extends Tool
      *
      * @return list<array<string, ?string>>|null
      */
-    private function guarantees(StagClient $stag, int $teacherId): ?array
+    private function guarantees(StagHttpClient $stag, int $teacherId): ?array
     {
         try {
             $rows = $stag->get('ucitel/getGarant_ProgramOborByUcitIdno', ['ucitIdno' => $teacherId]);

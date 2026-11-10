@@ -74,3 +74,34 @@ it('returns an empty array when STAG sends no body', function () {
 
     expect($result)->toBe([]);
 });
+
+it('asks for XML and hands back the parsed document', function () {
+    Http::fake([ANY_STAG => Http::response('<ns2:vspStudent xmlns:ns2="http://stag-ws.zcu.cz/"><fakulta>FAV</fakulta><rokyStudia><rocnik>1</rocnik></rokyStudia></ns2:vspStudent>')]);
+
+    $xml = (new StagHttpClient(User::factory()->withStagToken()->create()))
+        ->getXml('vsp/getStudent', ['osCislo' => 'X']);
+
+    expect((string) $xml->fakulta)->toBe('FAV')
+        ->and(count($xml->rokyStudia))->toBe(1);
+
+    /* Only XML: STAG picks JSON when both are offered. */
+    Http::assertSent(fn ($request) => $request->header('Accept') === ['application/xml']
+        && $request['osCislo'] === 'X');
+});
+
+it('treats an XML body that does not parse as a STAG fault', function (string $body) {
+    Http::fake([ANY_STAG => Http::response($body)]);
+
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->getXml('vsp/getStudent'))
+        ->toThrow(StagException::class, 'empty XML document');
+})->with([
+    'empty' => [''],
+    'truncated' => ['<vspStudent><rokyStudia>'],
+]);
+
+it('translates refusals on the XML path the same way', function () {
+    Http::fake([ANY_STAG => Http::response('Unauthorized', 401)]);
+
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->getXml('vsp/getStudent'))
+        ->toThrow(StagException::class, 'expired or been revoked');
+});
