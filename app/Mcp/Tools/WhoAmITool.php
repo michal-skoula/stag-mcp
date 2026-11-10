@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
@@ -111,7 +111,7 @@ class WhoAmITool extends Tool
      *
      * @throws StagException
      */
-    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
     {
         $identity = $this->resolveIdentity($stag);
 
@@ -157,7 +157,7 @@ class WhoAmITool extends Tool
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
      */
-    private function toRole(array $row, StagClient $stag): array
+    private function toRole(array $row, StagHttpClient $stag): array
     {
         return [
             'role' => $row['role'] ?? null,
@@ -177,7 +177,7 @@ class WhoAmITool extends Tool
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
-    private function studentDetail(array $row, StagClient $stag): ?array
+    private function studentDetail(array $row, StagHttpClient $stag): ?array
     {
         if (empty($row['osCislo'])) {
             return null;
@@ -212,7 +212,7 @@ class WhoAmITool extends Tool
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
-    private function teacherDetail(array $row, StagClient $stag): ?array
+    private function teacherDetail(array $row, StagHttpClient $stag): ?array
     {
         if (empty($row['ucitIdno'])) {
             return null;
@@ -251,7 +251,7 @@ class WhoAmITool extends Tool
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>|null
      */
-    private function fetchDetail(StagClient $stag, string $path, array $query): ?array
+    private function fetchDetail(StagHttpClient $stag, string $path, array $query): ?array
     {
         try {
             $info = $stag->get($path, $query);

@@ -2,7 +2,7 @@
 
 namespace App\Services\Teachers;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use Illuminate\Support\Facades\Cache;
 
@@ -53,7 +53,7 @@ final readonly class TeacherDirectory
      */
     public const int TEACHER_CACHE_TTL_SECONDS = 2_592_000;
 
-    public function __construct(private StagClient $stag) {}
+    public function __construct(private StagHttpClient $stag) {}
 
     /**
      * @return list<TeacherRow>
