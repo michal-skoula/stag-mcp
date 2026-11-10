@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -59,7 +59,7 @@ class MarkNotificationsReadTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
+    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
