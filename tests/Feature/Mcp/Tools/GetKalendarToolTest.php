@@ -400,6 +400,27 @@ it('maps exam occurrences to kind exam', function () {
         ->assertSee('"katedra":"KIV","zkratka":"DB1"');
 });
 
+it('hands over the teacher_id of an exam, which has no roakIdno, without extra STAG calls', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => [stagRozvrhAkceExam(), stagRozvrhAkce(['datum' => ['value' => '19.1.2026']])]]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => [
+            stagKalendarItem('19.1.2026', 'Po', 'ZZ', 'J', 4),
+        ]]),
+    ]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetKalendarTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
+        ->assertOk()
+        ->assertSee('"teachers":[{"teacher_id":17895,"name":"Ing. Martin Zíma, Ph.D."}]')
+        ->assertSee('"teacher_id":241911')
+        ->assertDontSee('ucit_idno');
+
+    /* Identity, the timetable and the calendar. The timetable rows already name their teachers, so no per-event lookup. */
+    Http::assertSentCount(3);
+    Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getUciteleRoakce'));
+});
+
 it('splits a multi-teacher list without breaking on a comma inside a title', function () {
     Http::fake([
         STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
@@ -412,7 +433,7 @@ it('splits a multi-teacher list without breaking on a comma inside a title', fun
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(GetKalendarTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
         ->assertOk()
-        ->assertSee('"teachers":[{"ucit_idno":54539,"name":"Ing. Ladislav Pešička, Ph.D."},{"ucit_idno":294708,"name":"Daniel Rössner"}]');
+        ->assertSee('"teachers":[{"teacher_id":54539,"name":"Ing. Ladislav Pešička, Ph.D."},{"teacher_id":294708,"name":"Daniel Rössner"}]');
 });
 
 it('strips the leading date from nekonaSe, keeps the structured room even when the note names another, and never emits cancelled', function () {
