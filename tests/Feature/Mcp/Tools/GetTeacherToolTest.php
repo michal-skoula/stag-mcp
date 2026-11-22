@@ -121,7 +121,7 @@ it('refuses a caller with no STAG ticket', function () {
 it('rejects a missing or invalid teacher_id before calling STAG', function (array $arguments) {
     Http::fake();
 
-    getUcitel($arguments)->assertHasErrors();
+    getUcitel($arguments)->assertHasErrors(['teacher_id is required and must be a positive whole number, e.g. 17098.']);
 
     Http::assertNothingSent();
 })->with([

@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-teacher')]
 #[Title('Get teacher')]
-#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, and which study programmes they guarantee. Find the teacher_id with search-teachers first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them.')]
+#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phones, office, web page, where to find consultation hours, and the study programmes they guarantee. Call it when the user wants to contact or find a specific person. Needs teacher_id, from search-teachers or from any tool that lists teachers. Student teachers (demonstrators, doctoral assistants) often have no office or phone on record, so email is the only contact STAG holds for them.')]
 #[IsReadOnly]
 class GetTeacherTool extends Tool
 {
@@ -36,7 +36,7 @@ class GetTeacherTool extends Tool
     {
         return [
             'teacher_id' => $schema->integer()
-                ->description('The teacher_id (ucitIdno) from search-teachers, or from any subject or timetable tool that lists teachers.')
+                ->description('The teacher_id (ucitIdno) from search-teachers, or from any subject, timetable or grades tool that lists teachers.')
                 ->required(),
         ];
     }
@@ -90,6 +90,8 @@ class GetTeacherTool extends Tool
     {
         $validated = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
+        ], [
+            'teacher_id' => 'teacher_id is required and must be a positive whole number, e.g. 17098. search-teachers finds it from a name.',
         ]);
 
         $teacherId = (int) $validated['teacher_id'];
@@ -98,7 +100,7 @@ class GetTeacherTool extends Tool
         $info = $stag->get('ucitel/getUcitelInfo', ['ucitIdno' => $teacherId]);
 
         if ($info === [] || array_is_list($info)) {
-            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-teachers to get a valid id.");
+            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-teachers to get a valid one.");
         }
 
         $card = BusinessCard::fetch($stag, $teacherId);

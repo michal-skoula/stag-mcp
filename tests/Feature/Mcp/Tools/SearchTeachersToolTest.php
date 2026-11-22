@@ -22,7 +22,7 @@ it('requires a name or a department', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchTeachersTool::class)
-        ->assertHasErrors();
+        ->assertHasErrors(['Pass name, department or both.']);
 
     Http::assertNothingSent();
 });
@@ -32,7 +32,7 @@ it('rejects a one-character name', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchTeachersTool::class, ['name' => 'a'])
-        ->assertHasErrors();
+        ->assertHasErrors(['name must be 2 to 100 characters of a first name or surname']);
 
     Http::assertNothingSent();
 });
@@ -86,7 +86,7 @@ it('rejects a department code that is not alphanumeric', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchTeachersTool::class, ['department' => 'KIV&katedra=REK'])
-        ->assertHasErrors();
+        ->assertHasErrors(['department must be a department or faculty code of up to 10 letters or digits']);
 
     Http::assertNothingSent();
 });
@@ -170,7 +170,7 @@ it('rejects a count above the maximum', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchTeachersTool::class, ['name' => 'novak', 'count' => 201])
-        ->assertHasErrors();
+        ->assertHasErrors(['count must be a whole number from 1 to 200.']);
 
     Http::assertNothingSent();
 });
