@@ -15,14 +15,16 @@ namespace App\Services\Onboarding;
  */
 enum OnboardingQuestion: string
 {
-    /** First academic year of the study, as the plan version it started on. */
+    /**
+     * First academic year of the study, as the plan version it started on.
+     * The current year of study is not stored, it goes stale every September.
+     * Work it out from this value when it is needed.
+     */
     case StudyStart = 'study_start';
 
     case Programme = 'programme';
 
     case Faculty = 'faculty';
-
-    case StudyYear = 'study_year';
 
     /** The STAG role codes the account holds, e.g. `["ST", "VY"]`. */
     case Roles = 'roles';
@@ -39,7 +41,6 @@ enum OnboardingQuestion: string
     {
         return match ($this) {
             self::StudyStart => ['integer', 'between:1990,'.(now()->year + 1)],
-            self::StudyYear => ['integer', 'between:1,12'],
             self::Programme, self::City => ['string', 'max:255'],
             self::Faculty => ['string', 'max:20'],
             self::Roles => ['array', 'max:10'],

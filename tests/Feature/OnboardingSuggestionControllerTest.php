@@ -46,13 +46,13 @@ it('stores a confirmed answer apart from the suggestion', function () {
     $user = suggestedUser();
 
     $this->actingAs($user)
-        ->putJson(route('onboarding.suggestions.update'), ['answers' => ['faculty' => 'FEL', 'study_year' => 3]])
-        ->assertJsonPath('questions.3.question', 'study_year')
-        ->assertJsonPath('questions.3.confirmed', 3);
+        ->putJson(route('onboarding.suggestions.update'), ['answers' => ['faculty' => 'FEL', 'study_start' => 2024]])
+        ->assertJsonPath('questions.0.question', 'study_start')
+        ->assertJsonPath('questions.0.confirmed', 2024);
 
     $record = $user->onboardingSuggestion()->first();
 
-    expect($record->confirmed)->toBe(['faculty' => 'FEL', 'study_year' => 3])
+    expect($record->confirmed)->toBe(['study_start' => 2024, 'faculty' => 'FEL'])
         ->and($record->suggestions['faculty']['value'])->toBe('FAV');
 });
 
@@ -99,8 +99,6 @@ it('rejects invalid answers', function (array $answers, string $field) {
         ->assertJsonValidationErrors($field);
 })->with([
     'unknown question' => [['shoe_size' => 42], 'answers.shoe_size'],
-    'year of study out of range' => [['study_year' => 0], 'answers.study_year'],
-    'year of study not a number' => [['study_year' => 'second'], 'answers.study_year'],
     'study start in the distant past' => [['study_start' => 1900], 'answers.study_start'],
     'roles not a list' => [['roles' => 'ST'], 'answers.roles'],
     'role item not a string' => [['roles' => [['ST']]], 'answers.roles.0'],

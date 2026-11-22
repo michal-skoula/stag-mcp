@@ -19,7 +19,6 @@ it('suggests an answer for every question a student account can answer', functio
         'roles' => ['value' => ['ST'], 'guessed' => false],
         'faculty' => ['value' => 'FAV', 'guessed' => false],
         'programme' => ['value' => 'Softwarové inženýrství', 'guessed' => false],
-        'study_year' => ['value' => 2, 'guessed' => false],
         'study_start' => ['value' => 2025, 'guessed' => false],
         'city' => ['value' => 'Plzeň', 'guessed' => true],
     ]);

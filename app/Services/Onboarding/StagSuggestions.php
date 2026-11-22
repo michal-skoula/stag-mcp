@@ -40,7 +40,6 @@ final readonly class StagSuggestions
             OnboardingQuestion::Roles->value => $this->roleCodes($roles),
             OnboardingQuestion::Faculty->value => $this->faculty($roles, $study),
             OnboardingQuestion::Programme->value => $study['student']['programme']['name'] ?? null,
-            OnboardingQuestion::StudyYear->value => $this->studyYear($study),
             OnboardingQuestion::StudyStart->value => $this->studyStart($study),
         ];
 
@@ -99,18 +98,6 @@ final readonly class StagSuggestions
         return filled($faculty)
             ? $faculty
             : collect($roles)->pluck('fakulta')->first(fn ($code) => filled($code));
-    }
-
-    /**
-     * STAG quotes the year as a string.
-     *
-     * @param  array<string, mixed>|null  $study
-     */
-    private function studyYear(?array $study): ?int
-    {
-        $year = $study['student']['rocnik'] ?? null;
-
-        return is_numeric($year) ? (int) $year : null;
     }
 
     /**
