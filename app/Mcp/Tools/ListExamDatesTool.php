@@ -22,11 +22,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-terminy')]
-#[Title('Get Terminy')]
+#[Name('list-exam-dates')]
+#[Title('List Exam Dates')]
 #[Description('Exam and zápočet terms (termíny) with date, time, room, examiner, capacity, registration deadlines and the caller\'s own registration state. With no katedra, zkratka or teacher_id it lists the caller\'s own terms: what the student portal offers them for the current year, plus every term they are registered on (use rok for an earlier year). With any of those three it lists that subject\'s, department\'s or teacher\'s terms and marks which ones the caller is on. Room bookings STAG stores as terms are never returned. Past and cancelled terms are hidden unless asked for, except a cancelled term the caller is still registered on. This tool cannot register or unregister.')]
 #[IsReadOnly]
-class GetTerminyTool extends Tool
+class ListExamDatesTool extends Tool
 {
     use PaginatesResponses;
     use RequiresStagLogin;

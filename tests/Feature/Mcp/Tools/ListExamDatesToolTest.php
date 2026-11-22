@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetTerminyTool;
+use App\Mcp\Tools\ListExamDatesTool;
 use App\Models\User;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Carbon;
@@ -130,17 +130,17 @@ function fakeTerminy(array $search = [], array $student = [], array $registered 
     });
 }
 
-function getTerminy(array $arguments = []): mixed
+function listExamDates(array $arguments = []): mixed
 {
     return StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetTerminyTool::class, $arguments);
+        ->tool(ListExamDatesTool::class, $arguments);
 }
 
 it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetTerminyTool::class, ['katedra' => 'KIV'])
+        ->tool(ListExamDatesTool::class, ['katedra' => 'KIV'])
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -149,7 +149,7 @@ it('refuses a caller with no STAG ticket', function () {
 it('rejects arguments STAG would silently answer with nothing', function (array $arguments) {
     Http::fake();
 
-    getTerminy($arguments)->assertHasErrors();
+    listExamDates($arguments)->assertHasErrors();
 
     Http::assertNothingSent();
 })->with([
@@ -162,7 +162,7 @@ it('rejects arguments STAG would silently answer with nothing', function (array 
 it('forwards a subject search to STAG without room bookings', function () {
     fakeTerminy(search: [terminyRow()]);
 
-    getTerminy(['katedra' => 'KIV', 'zkratka' => 'DB1', 'rok' => 2026, 'semestr' => 'ZS'])->assertOk();
+    listExamDates(['katedra' => 'KIV', 'zkratka' => 'DB1', 'rok' => 2026, 'semestr' => 'ZS'])->assertOk();
 
     Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyZkousek')
         && ! isset($request->data()['osCislo'])
@@ -172,7 +172,7 @@ it('forwards a subject search to STAG without room bookings', function () {
 it('maps a term into dates, times, capacity and deadlines', function () {
     fakeTerminy(search: [terminyRow()]);
 
-    getTerminy(['katedra' => 'KIV', 'zkratka' => 'DB1'])
+    listExamDates(['katedra' => 'KIV', 'zkratka' => 'DB1'])
         ->assertOk()
         ->assertSee('"term_id":1239020')
         ->assertSee('"subject":{"katedra":"KIV","zkratka":"DB1","rok":"2026","semestr":"ZS"}')
@@ -197,7 +197,7 @@ it('reports an unlimited term and a capacity group', function () {
         'opravny' => 'N',
     ])]);
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertOk()
         ->assertSee('"capacity":{"registered":19,"limit":null,"free":null}')
         ->assertSee('"group":{"id":283531,"registered":11,"limit":null,"parent_registered":20,"parent_limit":null}')
@@ -211,7 +211,7 @@ it('drops room bookings even if STAG sends them', function () {
         terminyRow(['termIdno' => 2, 'platnost' => 'B', 'poznamka' => 'SZZ Bc. - I. termín']),
     ]);
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertDontSee('SZZ Bc.');
@@ -224,15 +224,15 @@ it('hides past and cancelled terms unless asked', function () {
         terminyRow(['termIdno' => 3, 'platnost' => 'N']),
     ]);
 
-    getTerminy(['katedra' => 'KIV'])->assertSee('"total":1');
-    getTerminy(['katedra' => 'KIV', 'include_past' => true])->assertSee('"total":2');
-    getTerminy(['katedra' => 'KIV', 'include_cancelled' => true])->assertSee('"total":2')->assertSee('"status":"cancelled"');
+    listExamDates(['katedra' => 'KIV'])->assertSee('"total":1');
+    listExamDates(['katedra' => 'KIV', 'include_past' => true])->assertSee('"total":2');
+    listExamDates(['katedra' => 'KIV', 'include_cancelled' => true])->assertSee('"total":2')->assertSee('"status":"cancelled"');
 });
 
 it('keeps a term happening today', function () {
     fakeTerminy(search: [terminyRow(['datum' => ['value' => '22.11.2026'], 'casOd' => '08:00:00'])]);
 
-    getTerminy(['katedra' => 'KIV'])->assertSee('"total":1');
+    listExamDates(['katedra' => 'KIV'])->assertSee('"total":1');
 });
 
 it('keeps a cancelled term the caller is still registered on', function () {
@@ -241,7 +241,7 @@ it('keeps a cancelled term the caller is still registered on', function () {
         registered: [terminyRow(['platnost' => 'N'])],
     );
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertSee('"total":1')
         ->assertSee('"status":"cancelled"');
 });
@@ -262,7 +262,7 @@ it('marks the caller\'s registration state on search results', function () {
         registered: [terminyRow(['termIdno' => 2])],
     );
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertOk()
         ->assertSee('"os_cislo":"'.TERMINY_OS_CISLO.'"')
         ->assertSee('"registration":{"registered":false,"can_change":false,"reason_code":"X1","reason":"Termín je plně obsazen.","reason_detail":null,"queue":{"registered":false,"can_change":false,"reason":null}}')
@@ -280,7 +280,7 @@ it('filters a search to the terms the caller is registered on', function () {
         registered: [terminyRow(['termIdno' => 2])],
     );
 
-    getTerminy(['katedra' => 'KIV', 'registered_only' => true])
+    listExamDates(['katedra' => 'KIV', 'registered_only' => true])
         ->assertSee('"total":1')
         ->assertSee('"term_id":2');
 });
@@ -288,7 +288,7 @@ it('filters a search to the terms the caller is registered on', function () {
 it('returns search results without registration for a caller with no student role', function () {
     fakeTerminy(search: [terminyRow()], osCislo: null);
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertOk()
         ->assertSee('"os_cislo":null')
         ->assertSee('"registration":null');
@@ -299,7 +299,7 @@ it('returns search results without registration for a caller with no student rol
 it('still returns search results when STAG refuses the registration lookup', function () {
     fakeTerminy(search: [terminyRow()], studentResponse: Http::response('Forbidden', 403));
 
-    getTerminy(['katedra' => 'KIV'])
+    listExamDates(['katedra' => 'KIV'])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"registration":null');
@@ -317,7 +317,7 @@ it('lists the caller\'s own terms by merging both student sources', function () 
         ],
     );
 
-    getTerminy()
+    listExamDates()
         ->assertOk()
         ->assertSee('"source":"student"')
         ->assertSee('"total":3')
@@ -334,7 +334,7 @@ it('orders terms by date and start time', function () {
         terminyRow(['termIdno' => 1, 'datum' => ['value' => '5.1.2027'], 'casOd' => '08:00:00']),
     ]);
 
-    $ids = getTerminy(['katedra' => 'KIV'])->assertOk();
+    $ids = listExamDates(['katedra' => 'KIV'])->assertOk();
 
     $ids->assertSee('"terms":[{"term_id":1,');
 });
@@ -345,7 +345,7 @@ it('reads an earlier year\'s registrations by rok', function () {
         registered: [terminyRow(['termIdno' => 5, 'rok' => '2025', 'datum' => ['value' => '22.1.2026']])],
     );
 
-    getTerminy(['rok' => 2025, 'include_past' => true])
+    listExamDates(['rok' => 2025, 'include_past' => true])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"term_id":5')
@@ -362,7 +362,7 @@ it('filters the caller\'s own terms by semester', function () {
         terminyStudentRow(['termIdno' => 2, 'semestr' => 'LS']),
     ]);
 
-    getTerminy(['semestr' => 'LS'])
+    listExamDates(['semestr' => 'LS'])
         ->assertSee('"total":1')
         ->assertSee('"term_id":2');
 });
@@ -370,7 +370,7 @@ it('filters the caller\'s own terms by semester', function () {
 it('errors when listing own terms without a student role', function () {
     fakeTerminy(osCislo: null);
 
-    getTerminy()->assertHasErrors(['no student role']);
+    listExamDates()->assertHasErrors(['no student role']);
 });
 
 it('pages through the results', function () {
@@ -379,7 +379,7 @@ it('pages through the results', function () {
         range(1, 30),
     ));
 
-    getTerminy(['katedra' => 'KIV', 'count' => 10, 'offset' => 20])
+    listExamDates(['katedra' => 'KIV', 'count' => 10, 'offset' => 20])
         ->assertSee('"total":30,"offset":20,"count":10')
         ->assertSee('"terms":[{"term_id":21,');
 });
