@@ -2,7 +2,7 @@
 
 namespace App\Services\Teachers;
 
-use App\Contracts\StagClient;
+use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
 
 /**
@@ -29,7 +29,7 @@ final readonly class BusinessCard
      * Degrades to an empty card rather than failing, so a refused or missing
      * card still leaves the caller's other details answerable.
      */
-    public static function fetch(StagClient $stag, int|string $teacherId): self
+    public static function fetch(StagHttpClient $stag, int|string $teacherId): self
     {
         try {
             $card = $stag->get('vizitka/getVizitkaByUcitidno', ['ucitidno' => $teacherId]);

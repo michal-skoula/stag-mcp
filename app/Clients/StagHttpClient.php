@@ -2,7 +2,6 @@
 
 namespace App\Clients;
 
-use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -11,6 +10,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use SimpleXMLElement;
 
 /**
  * Talks to the IS-STAG REST services on behalf of one user.
@@ -22,14 +22,14 @@ use Illuminate\Support\Facades\Http;
  *
  * @see https://is-stag.zcu.cz/napoveda/web-services/ws_prihlasovani.html
  */
-readonly final class StagHttpClient implements StagClient
+final readonly class StagHttpClient
 {
     /** @var string Base URL for all STAG endpoints. */
     private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
 
     /**
-     * @param User $user MCP Client user
-     * @param bool $showRealExceptions Make endpoints return real STAG errors instead of abstracted error messages
+     * @param  User  $user  MCP Client user
+     * @param  bool  $showRealExceptions  Make endpoints return real STAG errors instead of abstracted error messages
      */
     public function __construct(private User $user, private bool $showRealExceptions = false) {}
 
@@ -69,12 +69,30 @@ readonly final class StagHttpClient implements StagClient
     }
 
     /**
-     * Runs the call and translates every failure into a StagException, so callers
-     * catch one type and never surface STAG's Czech error bodies.
+     * For the rare endpoint whose JSON is unusable (`vsp/getStudent` recurses
+     * until Jackson gives up and truncates the body). Returned as SimpleXML
+     * rather than an array on purpose: a generic conversion cannot tell which
+     * elements repeat, so one child comes out as an object and two as a list.
+     * The endpoint's own parser knows which elements are lists, and iterating
+     * SimpleXML treats one and many alike.
      *
-     * A 401 means different things depending on whether a token was sent at all,
-     * and the two need different instructions back to the user.
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
      *
+     * @throws StagException
+     */
+    public function getXml(string $path, array $query = []): SimpleXMLElement
+    {
+        $body = $this->sendRaw(
+            fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)),
+            accept: 'application/xml',
+        )->body();
+
+        $xml = simplexml_load_string($body, options: LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+
+        return $xml !== false ? $xml : throw StagException::emptyResponse('XML document');
+    }
+
+    /**
      * @param  callable(PendingRequest): Response  $call
      * @return array<array-key, mixed>
      *
@@ -82,12 +100,28 @@ readonly final class StagHttpClient implements StagClient
      */
     private function send(callable $call): array
     {
+        return $this->sendRaw($call)->json() ?? [];
+    }
+
+    /**
+     * Runs the call and translates every failure into a StagException, so callers
+     * catch one type and never surface STAG's Czech error bodies.
+     *
+     * A 401 means different things depending on whether a token was sent at all,
+     * and the two need different instructions back to the user.
+     *
+     * @param  callable(PendingRequest): Response  $call
+     *
+     * @throws StagException
+     */
+    private function sendRaw(callable $call, string $accept = 'application/json'): Response
+    {
         try {
-            return $call($this->request())->throw()->json() ?? [];
+            return $call($this->request($accept))->throw();
         } catch (ConnectionException $e) {
             throw StagException::unreachable($e);
         } catch (RequestException $e) {
-            if($this->showRealExceptions) {
+            if ($this->showRealExceptions) {
                 throw new StagException('['.$e->response->status().']: '.$e->getMessage(), previous: $e);
             } else {
                 throw match ($e->response->status()) {
@@ -134,12 +168,12 @@ readonly final class StagHttpClient implements StagClient
      * Most rest2 services answer anonymous callers, so the token is attached only
      * when there is one. An empty WSCOOKIE would be rejected outright.
      */
-    private function request(): PendingRequest
+    private function request(string $accept): PendingRequest
     {
         // Normalizing to always include a trailing slash
-        $baseUrl = rtrim(self::BASE_URL, '/') . '/';
+        $baseUrl = rtrim(self::BASE_URL, '/').'/';
 
-        $r = Http::baseUrl($baseUrl)->acceptJson();
+        $r = Http::baseUrl($baseUrl)->accept($accept);
 
         return $this->hasStagToken()
             ? $r->withHeaders(['Cookie' => "WSCOOKIE={$this->user->stag_token}"])
