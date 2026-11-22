@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
+use Illuminate\Validation\Rule;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -19,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-subject')]
 #[Title('Get subject')]
-#[Description('Full detail for one STAG subject identified by katedra and zkratka, e.g. from search-subjects: credits, teaching load, exam, staff, syllabus, and related subjects.')]
+#[Description('Full detail for one subject (předmět): credits, semesters, hours, how it is examined, who guarantees, lectures, runs exercises and examines it (with teacher_ids), the syllabus and requirements, and prerequisite or excluded subjects. Call it when the user asks about a specific subject: what it covers, how hard it is, who teaches it, what it needs. Needs department and code, e.g. from search-subjects or get-grades; year defaults to the current academic year.')]
 #[IsReadOnly]
 class GetSubjectTool extends Tool
 {
@@ -31,16 +32,20 @@ class GetSubjectTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'katedra' => $schema->string()
+            'department' => $schema->string()
                 ->description('Department abbreviation, e.g. "KIV".')
                 ->required(),
-            'zkratka' => $schema->string()
-                ->description('Subject abbreviation, e.g. "UPA".')
+            'code' => $schema->string()
+                ->description('Subject code within the department, e.g. "UPA".')
                 ->required(),
-            'rok' => $schema->string()
-                ->description('Academic year, e.g. "2026". Defaults to the current STAG year when omitted.'),
-            'lang' => $schema->string()
-                ->description('Language code for translated fields, e.g. "en". Not validated — passed through as-is.'),
+            /*
+             * Accepts a number as well as a string: the year reads
+             * as numeric, and clients send 2025 as often as "2025".
+             */
+            'year' => $schema->anyOf([$schema->string(), $schema->integer()])
+                ->description('Academic year as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
+            'language' => $schema->string()
+                ->description('Language for the free-text fields STAG translates, "cs" or "en". Untranslated fields stay Czech.'),
         ];
     }
 
@@ -54,92 +59,87 @@ class GetSubjectTool extends Tool
         $nullableInt = fn () => $schema->anyOf([$schema->integer()])->nullable();
         $stringList = fn (string $description) => $schema->array()->description($description)->items($schema->string());
         $intList = fn (string $description) => $schema->array()->description($description)->items($schema->integer());
+        $hours = fn (string $what) => $schema->object([
+            'amount' => $nullableInt()->description("{$what} hours, or null."),
+            'unit' => $nullableString()->description("Unit the {$what} hours are counted in, e.g. \"HOD/TYD\" (hours a week), or null."),
+        ]);
 
         return [
-            'katedra' => $schema->string()->description('Department abbreviation.'),
-            'zkratka' => $schema->string()->description('Subject abbreviation.'),
-            'rok' => $schema->string()->description('Academic year.'),
-            'nazev' => $schema->string()->description('Subject name.'),
-            'nazev_dlouhy' => $schema->string()->description('Long subject name.'),
-            'akreditovan' => $nullableBool()->description('Whether the subject is accredited, or null.'),
-            'uroven' => $nullableString()->description('Computed study level (e.g. "Bc."), or null.'),
+            'department' => $schema->string()->description('Department abbreviation.'),
+            'code' => $schema->string()->description('Subject code within the department.'),
+            'year' => $schema->string()->description('Academic year, as its starting year.'),
+            'name' => $schema->string()->description('Subject name.'),
+            'long_name' => $schema->string()->description('Long subject name.'),
+            'accredited' => $nullableBool()->description('Whether the subject is accredited, or null.'),
+            'level' => $nullableString()->description('Study level STAG computes for it, e.g. "Bc.", or null.'),
             'teaching' => $schema->object([
-                'kredity' => $nullableInt()->description('ECTS credits, or null.'),
-                'vyuka_zs' => $nullableBool()->description('Taught in winter semester, or null.'),
-                'vyuka_ls' => $nullableBool()->description('Taught in summer semester, or null.'),
-                'ma_vyuku' => $nullableBool()->description('Currently has teaching, or null.'),
-                'jak_casto' => $nullableString()->description('How often the subject is offered (raw STAG code), or null.'),
-                'jak_casto_upresneni' => $nullableString()->description('Free-text detail on how often it is offered, or null.'),
-                'vice_zapis' => $nullableString()->description('Whether repeated enrolment is allowed (raw STAG value), or null.'),
-                'min_obsazeni' => $nullableInt()->description('Minimum enrolment, or null.'),
-                'jazyky' => $nullableString()->description('Languages of instruction, or null.'),
+                'credits' => $nullableInt()->description('ECTS credits, or null.'),
+                'taught_in_winter' => $nullableBool()->description('Taught in the winter semester, or null.'),
+                'taught_in_summer' => $nullableBool()->description('Taught in the summer semester, or null.'),
+                'has_teaching' => $nullableBool()->description('Whether it has teaching this year, or null.'),
+                'frequency' => $nullableString()->description('How often it is offered, as STAG\'s raw code, or null.'),
+                'frequency_note' => $nullableString()->description('Free-text detail on how often it is offered, or null.'),
+                'repeatable' => $nullableString()->description('Whether it can be enrolled in again after passing, as STAG\'s raw value, or null.'),
+                'min_enrolment' => $nullableInt()->description('Fewest students it opens for, or null.'),
+                'languages' => $nullableString()->description('Languages of instruction, or null.'),
             ]),
             'hours' => $schema->object([
-                'prednasky' => $schema->object([
-                    'pocet' => $nullableInt()->description('Lecture hours, or null.'),
-                    'jednotka' => $nullableString()->description('Unit the lecture hours are measured in, or null.'),
-                ]),
-                'cviceni' => $schema->object([
-                    'pocet' => $nullableInt()->description('Seminar/exercise hours, or null.'),
-                    'jednotka' => $nullableString()->description('Unit the exercise hours are measured in, or null.'),
-                ]),
-                'seminare' => $schema->object([
-                    'pocet' => $nullableInt()->description('Seminar hours, or null.'),
-                    'jednotka' => $nullableString()->description('Unit the seminar hours are measured in, or null.'),
-                ]),
-                'celkova_narocnost' => $nullableString()->description('Breakdown of total workload by activity, or null.'),
+                'lectures' => $hours('Lecture'),
+                'exercises' => $hours('Exercise'),
+                'seminars' => $hours('Seminar'),
+                'workload' => $nullableString()->description('Breakdown of the total workload by activity, or null.'),
             ]),
             'exam' => $schema->object([
-                'typ' => $nullableString()->description('Exam type, or null.'),
-                'forma' => $nullableString()->description('Exam form, or null.'),
-                'zapocet_pred_zkouskou' => $nullableBool()->description('Whether credit is required before the exam, or null.'),
+                'type' => $nullableString()->description('How it is concluded, e.g. "Zkouška" or "Zápočet", or null.'),
+                'form' => $nullableString()->description('Exam form, e.g. written or oral, or null.'),
+                'zapocet_before_exam' => $nullableBool()->description('Whether a zápočet is needed before the exam can be taken, or null.'),
             ]),
             'people' => $schema->object([
-                'garanti' => $stringList('Guarantor names.'),
-                'garanti_ucit_idno' => $intList('Guarantor teacher IDs, for cross-referencing with the ucitel namespace.'),
-                'prednasejici' => $stringList('Lecturer names.'),
-                'prednasejici_ucit_idno' => $intList('Lecturer teacher IDs.'),
-                'cvicici' => $stringList('Seminar/exercise instructor names.'),
-                'cvicici_ucit_idno' => $intList('Seminar/exercise instructor teacher IDs.'),
-                'seminarici' => $stringList('Seminar leader names.'),
-                'seminarici_ucit_idno' => $intList('Seminar leader teacher IDs.'),
-                'examinatori' => $stringList('Examiner names.'),
-                'examinatori_ucit_idno' => $intList('Examiner teacher IDs.'),
-                'schvalujici_uznani' => $stringList('Names of those who approve recognition of the subject.'),
-                'schvalujici_uznani_ucit_idno' => $intList('Teacher IDs of those who approve recognition.'),
+                'guarantors' => $stringList('Guarantor (garant) names.'),
+                'guarantor_teacher_ids' => $intList('Guarantor teacher_ids, for get-teacher.'),
+                'lecturers' => $stringList('Lecturer (přednášející) names.'),
+                'lecturer_teacher_ids' => $intList('Lecturer teacher_ids.'),
+                'instructors' => $stringList('Names of those who run the exercises (cvičící).'),
+                'instructor_teacher_ids' => $intList('Instructor teacher_ids.'),
+                'seminar_leaders' => $stringList('Seminar leader (seminárník) names.'),
+                'seminar_leader_teacher_ids' => $intList('Seminar leader teacher_ids.'),
+                'examiners' => $stringList('Examiner (zkoušející) names.'),
+                'examiner_teacher_ids' => $intList('Examiner teacher_ids.'),
+                'recognition_approvers' => $stringList('Names of those who approve recognising the subject from another study.'),
+                'recognition_approver_teacher_ids' => $intList('Recognition approver teacher_ids.'),
             ]),
             'content' => $schema->object([
-                'anotace' => $nullableString()->description('Annotation, or null.'),
-                'prehled_latky' => $nullableString()->description('Syllabus overview, or null.'),
-                'pozadavky' => $nullableString()->description('Requirements to pass, or null.'),
-                'predpoklady' => $nullableString()->description('Prerequisites (free text), or null.'),
-                'ziskane_zpusobilosti' => $nullableString()->description('Competencies gained, or null.'),
-                'metody_vyucovaci' => $nullableString()->description('Teaching methods, or null.'),
-                'metody_hodnotici' => $nullableString()->description('Assessment methods, or null.'),
-                'literatura' => $stringList('Literature/reading list entries.'),
-                'studijni_opory' => $nullableString()->description('Study materials link or note, or null.'),
+                'summary' => $nullableString()->description('Annotation (anotace), or null.'),
+                'syllabus' => $nullableString()->description('Overview of the topics covered, or null.'),
+                'requirements' => $nullableString()->description('What it takes to pass, or null.'),
+                'prerequisites_note' => $nullableString()->description('Expected prior knowledge, as free text, or null.'),
+                'learning_outcomes' => $nullableString()->description('Competencies gained, or null.'),
+                'teaching_methods' => $nullableString()->description('Teaching methods, or null.'),
+                'assessment_methods' => $nullableString()->description('Assessment methods, or null.'),
+                'literature' => $stringList('Reading list entries.'),
+                'study_materials' => $nullableString()->description('Study materials link or note, or null.'),
             ]),
             'relations' => $schema->object([
-                'podminujici' => $stringList('Subjects required as prerequisites (raw codes).'),
-                'vylucujici' => $stringList('Mutually exclusive subjects (raw codes).'),
-                'podminuje' => $stringList('Subjects this one is a prerequisite for (raw codes).'),
-                'nahrazuje' => $stringList('Subjects this one replaces (raw codes).'),
+                'prerequisites' => $stringList('Subjects that must be passed first, as "DEPARTMENT/CODE".'),
+                'excludes' => $stringList('Subjects that cannot be taken alongside this one, as "DEPARTMENT/CODE".'),
+                'prerequisite_for' => $stringList('Subjects that need this one first, as "DEPARTMENT/CODE".'),
+                'replaces' => $stringList('Subjects this one replaces, as "DEPARTMENT/CODE".'),
             ]),
             'ects' => $schema->object([
-                'zobrazit' => $nullableBool()->description('Whether to display in ECTS, or null.'),
-                'akreditace' => $nullableBool()->description('Whether ECTS-accredited, or null.'),
-                'nabizet_u_prijezdu' => $nullableBool()->description('Whether offered to incoming ECTS students, or null.'),
+                'shown' => $nullableBool()->description('Whether it is listed in the ECTS catalogue, or null.'),
+                'accredited' => $nullableBool()->description('Whether it is ECTS-accredited, or null.'),
+                'offered_to_incoming' => $nullableBool()->description('Whether it is offered to incoming exchange students, or null.'),
             ]),
             'misc' => $schema->object([
-                'poznamka' => $nullableString()->description('Internal note, or null.'),
-                'poznamka_verejna' => $nullableString()->description('Public note, or null.'),
-                'url' => $nullableString()->description('Subject URL, or null.'),
-                'skupina_akreditace' => $nullableString()->description('Accreditation group, or null.'),
-                'zarazen_prezencni' => $nullableBool()->description('Included in full-time study, or null.'),
-                'zarazen_kombinovane' => $nullableBool()->description('Included in combined study, or null.'),
-                'praxe_pocet_dnu' => $nullableString()->description('Number of internship days, or null.'),
-                'automaticky_uznavat_zpp_zk' => $nullableBool()->description('Whether ZPP/exam is auto-recognised, or null.'),
-                'hod_za_sem_komb_forma' => $nullableString()->description('Hours per semester in combined form, or null.'),
+                'note' => $nullableString()->description('Internal note, or null.'),
+                'public_note' => $nullableString()->description('Public note, or null.'),
+                'url' => $nullableString()->description('Subject web page, or null.'),
+                'accreditation_group' => $nullableString()->description('Accreditation group, or null.'),
+                'in_full_time' => $nullableBool()->description('Included in full-time study, or null.'),
+                'in_combined' => $nullableBool()->description('Included in combined study, or null.'),
+                'internship_days' => $nullableString()->description('Number of internship days, or null.'),
+                'auto_recognised' => $nullableBool()->description('Whether a zápočet or exam from elsewhere is recognised automatically, or null.'),
+                'combined_hours_per_semester' => $nullableString()->description('Hours a semester in combined study, or null.'),
             ]),
         ];
     }
@@ -154,17 +154,22 @@ class GetSubjectTool extends Tool
         }
 
         $validated = $request->validate([
-            'katedra' => ['string', 'required'],
-            'zkratka' => ['string', 'required'],
-            'rok' => ['string', 'nullable'],
-            'lang' => ['string', 'nullable'],
+            'department' => ['string', 'required'],
+            'code' => ['string', 'required'],
+            'year' => ['integer', 'min:1990', 'max:2100', 'nullable'],
+            'language' => ['string', Rule::in(['cs', 'en']), 'nullable'],
+        ], [
+            'department' => 'department is required and must be a department abbreviation, e.g. "KIV".',
+            'code' => 'code is required and must be the subject code within the department, e.g. "UPA".',
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
+            'language' => 'language must be "cs" or "en".',
         ]);
 
         $params = array_filter([
-            'katedra' => $validated['katedra'],
-            'zkratka' => $validated['zkratka'],
-            'rok' => $validated['rok'] ?? null,
-            'lang' => $validated['lang'] ?? null,
+            'katedra' => $validated['department'],
+            'zkratka' => $validated['code'],
+            'rok' => isset($validated['year']) ? (string) $validated['year'] : null,
+            'lang' => $validated['language'] ?? null,
         ], fn ($value) => $value !== null);
 
         try {
@@ -176,7 +181,7 @@ class GetSubjectTool extends Tool
         // STAG returns [] (an empty list, not an object) when nothing matches
         // katedra/zkratka/rok, rather than a 404 or an error response.
         if ($row === [] || array_is_list($row)) {
-            return Response::error("No subject found for katedra '{$validated['katedra']}', zkratka '{$validated['zkratka']}'.");
+            return Response::error("No subject found for department '{$validated['department']}' and code '{$validated['code']}'. Check both with search-subjects.");
         }
 
         return Response::structured($this->toSubjectInfo($row));
@@ -189,95 +194,95 @@ class GetSubjectTool extends Tool
     private function toSubjectInfo(array $row): array
     {
         return [
-            'katedra' => $row['katedra'],
-            'zkratka' => $row['zkratka'],
-            'rok' => $row['rok'],
-            'nazev' => $row['nazev'],
-            'nazev_dlouhy' => $row['nazevDlouhy'],
-            'akreditovan' => $this->fromStagBool($row['akreditovan'] ?? null),
+            'department' => $row['katedra'],
+            'code' => $row['zkratka'],
+            'year' => $row['rok'],
+            'name' => $row['nazev'],
+            'long_name' => $row['nazevDlouhy'],
+            'accredited' => $this->fromStagBool($row['akreditovan'] ?? null),
             // urovenNastavena is dropped: null in every sample seen so far and
             // redundant with the computed urovenVypoctena. skupinaAkreditaceKey
             // is dropped too — it's just skupinaAkreditace's numeric code.
-            'uroven' => $row['urovenVypoctena'] ?? null,
+            'level' => $row['urovenVypoctena'] ?? null,
             'teaching' => [
-                'kredity' => $row['kreditu'] ?? null,
-                'vyuka_zs' => $this->fromStagBool($row['vyukaZS'] ?? null),
-                'vyuka_ls' => $this->fromStagBool($row['vyukaLS'] ?? null),
-                'ma_vyuku' => $this->fromStagBool($row['maVyuku'] ?? null),
-                'jak_casto' => $row['jakCastoJeNabizen'] ?? null,
-                'jak_casto_upresneni' => $row['jakCastoJeNabizenUpresneni'] ?? null,
-                'vice_zapis' => $row['viceZapis'] ?? null,
-                'min_obsazeni' => $row['minObsazeni'] ?? null,
-                'jazyky' => $row['vyucovaciJazyky'] ?? null,
+                'credits' => $row['kreditu'] ?? null,
+                'taught_in_winter' => $this->fromStagBool($row['vyukaZS'] ?? null),
+                'taught_in_summer' => $this->fromStagBool($row['vyukaLS'] ?? null),
+                'has_teaching' => $this->fromStagBool($row['maVyuku'] ?? null),
+                'frequency' => $row['jakCastoJeNabizen'] ?? null,
+                'frequency_note' => $row['jakCastoJeNabizenUpresneni'] ?? null,
+                'repeatable' => $row['viceZapis'] ?? null,
+                'min_enrolment' => $row['minObsazeni'] ?? null,
+                'languages' => $row['vyucovaciJazyky'] ?? null,
             ],
             'hours' => [
-                'prednasky' => [
-                    'pocet' => $row['jednotekPrednasek'] ?? null,
-                    'jednotka' => $row['jednotkaPrednasky'] ?? null,
+                'lectures' => [
+                    'amount' => $row['jednotekPrednasek'] ?? null,
+                    'unit' => $row['jednotkaPrednasky'] ?? null,
                 ],
-                'cviceni' => [
-                    'pocet' => $row['jednotekCviceni'] ?? null,
-                    'jednotka' => $row['jednotkaCviceni'] ?? null,
+                'exercises' => [
+                    'amount' => $row['jednotekCviceni'] ?? null,
+                    'unit' => $row['jednotkaCviceni'] ?? null,
                 ],
-                'seminare' => [
-                    'pocet' => $row['jednotekSeminare'] ?? null,
-                    'jednotka' => $row['jednotkaSeminare'] ?? null,
+                'seminars' => [
+                    'amount' => $row['jednotekSeminare'] ?? null,
+                    'unit' => $row['jednotkaSeminare'] ?? null,
                 ],
-                'celkova_narocnost' => $row['casovaNarocnost'] ?? null,
+                'workload' => $row['casovaNarocnost'] ?? null,
             ],
             'exam' => [
-                'typ' => $row['typZkousky'] ?? null,
-                'forma' => $row['formaZkousky'] ?? null,
-                'zapocet_pred_zkouskou' => $this->fromStagBool($row['maZapocetPredZk'] ?? null),
+                'type' => $row['typZkousky'] ?? null,
+                'form' => $row['formaZkousky'] ?? null,
+                'zapocet_before_exam' => $this->fromStagBool($row['maZapocetPredZk'] ?? null),
             ],
             // The *SPodily variants (name + workload percentage) are dropped as
             // redundant with the plain name list plus the matching *UcitIdno ids.
             'people' => [
-                'garanti' => $this->splitQuotedList($row['garanti'] ?? null),
-                'garanti_ucit_idno' => $this->splitIds($row['garantiUcitIdno'] ?? null),
-                'prednasejici' => $this->splitQuotedList($row['prednasejici'] ?? null),
-                'prednasejici_ucit_idno' => $this->splitIds($row['prednasejiciUcitIdno'] ?? null),
-                'cvicici' => $this->splitQuotedList($row['cvicici'] ?? null),
-                'cvicici_ucit_idno' => $this->splitIds($row['cviciciUcitIdno'] ?? null),
-                'seminarici' => $this->splitQuotedList($row['seminarici'] ?? null),
-                'seminarici_ucit_idno' => $this->splitIds($row['seminariciUcitIdno'] ?? null),
-                'examinatori' => $this->splitQuotedList($row['examinatori'] ?? null),
-                'examinatori_ucit_idno' => $this->splitIds($row['examinatoriUcitIdno'] ?? null),
-                'schvalujici_uznani' => $this->splitQuotedList($row['schvalujiciUznani'] ?? null),
-                'schvalujici_uznani_ucit_idno' => $this->splitIds($row['schvalujiciUznaniUcitIdno'] ?? null),
+                'guarantors' => $this->splitQuotedList($row['garanti'] ?? null),
+                'guarantor_teacher_ids' => $this->splitIds($row['garantiUcitIdno'] ?? null),
+                'lecturers' => $this->splitQuotedList($row['prednasejici'] ?? null),
+                'lecturer_teacher_ids' => $this->splitIds($row['prednasejiciUcitIdno'] ?? null),
+                'instructors' => $this->splitQuotedList($row['cvicici'] ?? null),
+                'instructor_teacher_ids' => $this->splitIds($row['cviciciUcitIdno'] ?? null),
+                'seminar_leaders' => $this->splitQuotedList($row['seminarici'] ?? null),
+                'seminar_leader_teacher_ids' => $this->splitIds($row['seminariciUcitIdno'] ?? null),
+                'examiners' => $this->splitQuotedList($row['examinatori'] ?? null),
+                'examiner_teacher_ids' => $this->splitIds($row['examinatoriUcitIdno'] ?? null),
+                'recognition_approvers' => $this->splitQuotedList($row['schvalujiciUznani'] ?? null),
+                'recognition_approver_teacher_ids' => $this->splitIds($row['schvalujiciUznaniUcitIdno'] ?? null),
             ],
             'content' => [
-                'anotace' => $row['anotace'] ?? null,
-                'prehled_latky' => $row['prehledLatky'] ?? null,
-                'pozadavky' => $row['pozadavky'] ?? null,
-                'predpoklady' => $row['predpoklady'] ?? null,
-                'ziskane_zpusobilosti' => $row['ziskaneZpusobilosti'] ?? null,
-                'metody_vyucovaci' => $row['metodyVyucovaci'] ?? null,
-                'metody_hodnotici' => $row['metodyHodnotici'] ?? null,
-                'literatura' => $this->splitQuotedList($row['literatura'] ?? null),
-                'studijni_opory' => $row['studijniOpory'] ?? null,
+                'summary' => $row['anotace'] ?? null,
+                'syllabus' => $row['prehledLatky'] ?? null,
+                'requirements' => $row['pozadavky'] ?? null,
+                'prerequisites_note' => $row['predpoklady'] ?? null,
+                'learning_outcomes' => $row['ziskaneZpusobilosti'] ?? null,
+                'teaching_methods' => $row['metodyVyucovaci'] ?? null,
+                'assessment_methods' => $row['metodyHodnotici'] ?? null,
+                'literature' => $this->splitQuotedList($row['literatura'] ?? null),
+                'study_materials' => $row['studijniOpory'] ?? null,
             ],
             'relations' => [
-                'podminujici' => $this->splitCodes($row['podminujiciPredmety'] ?? null),
-                'vylucujici' => $this->splitCodes($row['vylucujiciPredmety'] ?? null),
-                'podminuje' => $this->splitCodes($row['podminujePredmety'] ?? null),
-                'nahrazuje' => $this->splitCodes($row['nahrazPredmety'] ?? null),
+                'prerequisites' => $this->splitCodes($row['podminujiciPredmety'] ?? null),
+                'excludes' => $this->splitCodes($row['vylucujiciPredmety'] ?? null),
+                'prerequisite_for' => $this->splitCodes($row['podminujePredmety'] ?? null),
+                'replaces' => $this->splitCodes($row['nahrazPredmety'] ?? null),
             ],
             'ects' => [
-                'zobrazit' => $this->fromStagBool($row['ectsZobrazit'] ?? null),
-                'akreditace' => $this->fromStagBool($row['ectsAkreditace'] ?? null),
-                'nabizet_u_prijezdu' => $this->fromStagBool($row['ectsNabizetUPrijezdu'] ?? null),
+                'shown' => $this->fromStagBool($row['ectsZobrazit'] ?? null),
+                'accredited' => $this->fromStagBool($row['ectsAkreditace'] ?? null),
+                'offered_to_incoming' => $this->fromStagBool($row['ectsNabizetUPrijezdu'] ?? null),
             ],
             'misc' => [
-                'poznamka' => $row['poznamka'] ?? null,
-                'poznamka_verejna' => $row['poznamkaVerejna'] ?? null,
+                'note' => $row['poznamka'] ?? null,
+                'public_note' => $row['poznamkaVerejna'] ?? null,
                 'url' => $row['predmetUrl'] ?? null,
-                'skupina_akreditace' => $row['skupinaAkreditace'] ?? null,
-                'zarazen_prezencni' => $this->fromStagBool($row['zarazenDoPrezencnihoStudia'] ?? null),
-                'zarazen_kombinovane' => $this->fromStagBool($row['zarazenDoKombinovanehoStudia'] ?? null),
-                'praxe_pocet_dnu' => $row['praxePocetDnu'] ?? null,
-                'automaticky_uznavat_zpp_zk' => $this->fromStagBool($row['automatickyUznavatZppZk'] ?? null),
-                'hod_za_sem_komb_forma' => $row['hodZaSemKombForma'] ?? null,
+                'accreditation_group' => $row['skupinaAkreditace'] ?? null,
+                'in_full_time' => $this->fromStagBool($row['zarazenDoPrezencnihoStudia'] ?? null),
+                'in_combined' => $this->fromStagBool($row['zarazenDoKombinovanehoStudia'] ?? null),
+                'internship_days' => $row['praxePocetDnu'] ?? null,
+                'auto_recognised' => $this->fromStagBool($row['automatickyUznavatZppZk'] ?? null),
+                'combined_hours_per_semester' => $row['hodZaSemKombForma'] ?? null,
             ],
         ];
     }
