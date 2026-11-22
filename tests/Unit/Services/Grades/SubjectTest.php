@@ -16,20 +16,20 @@ it('merges name and credits from the catalogue when the enrolment matches', func
     $subject = Subject::fromRow($row, $catalogue, subjectScales());
 
     expect($subject->toArray())
-        ->toMatchArray(['nazev' => 'Databázové systémy 1', 'kredity' => 6]);
+        ->toMatchArray(['name' => 'Databázové systémy 1', 'credits' => 6]);
 });
 
 it('leaves name and credits null when the catalogue has no matching row', function () {
     $subject = Subject::fromRow(GradesFixtures::znamka(), [], subjectScales());
 
-    expect($subject->toArray())->toMatchArray(['nazev' => null, 'kredity' => null])
+    expect($subject->toArray())->toMatchArray(['name' => null, 'credits' => null])
         ->and($subject->credits())->toBeNull();
 });
 
 it('decodes the grade through the codebook rather than echoing the raw code', function () {
     $subject = Subject::fromRow(GradesFixtures::znamka(), [], subjectScales());
 
-    expect($subject->toArray()['zkouska'])->toMatchArray([
+    expect($subject->toArray()['exam'])->toMatchArray([
         'grade' => '1',
         'grade_name' => 'Výborně',
         'is_pass' => true,
@@ -47,13 +47,13 @@ it('normalises empty strings to null', function () {
 it('parses the padded dd.MM.yyyy date format to ISO', function () {
     $subject = Subject::fromRow(GradesFixtures::znamka(['zk_datum' => '19.01.2026']), [], subjectScales());
 
-    expect($subject->toArray()['zkouska']['date'])->toBe('2026-01-19');
+    expect($subject->toArray()['exam']['date'])->toBe('2026-01-19');
 });
 
 it('degrades an unparseable date to null instead of throwing', function () {
     $subject = Subject::fromRow(GradesFixtures::znamka(['zk_datum' => 'not a date']), [], subjectScales());
 
-    expect($subject->toArray()['zkouska']['date'])->toBeNull();
+    expect($subject->toArray()['exam']['date'])->toBeNull();
 });
 
 it('omits the zkouska block entirely when every zk_ field is absent', function () {
@@ -67,7 +67,7 @@ it('omits the zkouska block entirely when every zk_ field is absent', function (
 
     $subject = Subject::fromRow($row, [], subjectScales());
 
-    expect($subject->toArray()['zkouska'])->toBeNull();
+    expect($subject->toArray()['exam'])->toBeNull();
 });
 
 it('omits the zapocet block entirely when every zppzk_ field is absent', function () {
@@ -172,7 +172,7 @@ it('records what superseded it and reflects that in toArray', function () {
     $earlier->supersededBy($later);
 
     expect($earlier->isSuperseded())->toBeTrue()
-        ->and($earlier->toArray()['status']['superseded_by'])->toBe('2026/ZS');
+        ->and($earlier->toArray()['status']['superseded_by'])->toBe('2026 winter');
 });
 
 it('exposes the katedra/zkratka course key', function () {

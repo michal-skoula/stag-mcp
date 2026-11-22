@@ -45,13 +45,14 @@ it('defaults to the current academic year and semester', function () {
         ->tool(GetGradesTool::class, []);
 
     $response->assertOk()
-        ->assertSee('"rok":"2026"')
+        ->assertSee('"year":"2026/2027"')
+        ->assertSee('"semester":"winter"')
         ->assertSee('"total":1')
         ->assertSee('Webové aplikace')
         ->assertDontSee('Databázové systémy 1');
 });
 
-it('returns the whole history when all_years is set, ignoring rok/semestr', function () {
+it('returns the whole history when all_years is set, ignoring year and semester', function () {
     [$znamky, $absolvoval] = GradesFixtures::firstYear();
     GradesFixtures::fake($znamky, $absolvoval);
 
@@ -60,17 +61,17 @@ it('returns the whole history when all_years is set, ignoring rok/semestr', func
 
     $response->assertOk()
         ->assertSee('"total":14')
-        ->assertSee('"rok":null')
+        ->assertSee('"year":null')
         ->assertSee('"all_years":true')
         ->assertSee('"uncredited":0');
 });
 
-it('never sends katedra/zkratka filters to STAG, which matches them case-sensitively', function () {
+it('never sends department/code filters to STAG, which matches them case-sensitively', function () {
     [$znamky, $absolvoval] = GradesFixtures::firstYear();
     GradesFixtures::fake($znamky, $absolvoval);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['all_years' => true, 'katedra' => 'kma', 'zkratka' => 'ma1']);
+        ->tool(GetGradesTool::class, ['all_years' => true, 'department' => 'kma', 'code' => 'ma1']);
 
     /* pracZkr/zkrPredm are exact-match and case-sensitive upstream, so "kma"
      * would return nothing. The whole history is fetched and filtered locally. */
@@ -102,56 +103,69 @@ it('returns the whole matching set with no pagination keys', function () {
         ->assertDontSee('"count"');
 });
 
-it('accepts a blank semestr as an alias for the wildcard', function () {
+it('returns both semesters for semester both', function () {
     [$znamky, $absolvoval] = GradesFixtures::firstYear();
     GradesFixtures::fake($znamky, $absolvoval);
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['rok' => '2025', 'semestr' => '']);
+        ->tool(GetGradesTool::class, ['year' => '2025', 'semester' => 'both']);
 
-    $response->assertOk()->assertSee('"total":14');
+    $response->assertOk()
+        ->assertSee('"semester":"both"')
+        ->assertSee('"total":14');
 });
 
-it('rejects a semestr that is not ZS, LS, %, or blank', function () {
+it('maps winter and summer onto the matching subjects', function (string $semester, int $total) {
+    [$znamky, $absolvoval] = GradesFixtures::firstYear();
+    GradesFixtures::fake($znamky, $absolvoval);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetGradesTool::class, ['year' => 2025, 'semester' => $semester])
+        ->assertOk()
+        ->assertSee('"semester":"'.$semester.'"')
+        ->assertSee('"total":'.$total);
+})->with([['winter', 8], ['summer', 6]]);
+
+it('rejects a semester that is not winter, summer or both', function () {
     GradesFixtures::fake([GradesFixtures::znamka()], [GradesFixtures::absolvoval()]);
 
     /* Upstream, a garbage semestr silently returns zero rows rather than an
      * error, which would otherwise read as "you have no grades this term". */
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['semestr' => 'XX']);
+        ->tool(GetGradesTool::class, ['semester' => 'ZS']);
 
-    $response->assertHasErrors();
+    $response->assertHasErrors(['semester must be "winter", "summer" or "both".']);
     Http::assertNothingSent();
 });
 
-it('accepts the academic year as a number as well as a string', function (int|string $rok) {
+it('accepts the academic year as a number as well as a string', function (int|string $year) {
     [$znamky, $absolvoval] = GradesFixtures::firstYear();
     GradesFixtures::fake($znamky, $absolvoval);
 
     // Clients send 2025 as readily as "2025" for a field that reads numeric.
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['rok' => $rok, 'semestr' => '%']);
+        ->tool(GetGradesTool::class, ['year' => $year, 'semester' => 'both']);
 
     $response->assertOk()
-        ->assertSee('"rok":"2025"')
+        ->assertSee('"year":"2025/2026"')
         ->assertSee('"total":14');
 })->with([2025, '2025']);
 
-it('rejects a year that cannot be one instead of reporting an empty record', function (mixed $rok) {
+it('rejects a year that cannot be one instead of reporting an empty record', function (mixed $year) {
     GradesFixtures::fake([GradesFixtures::znamka()], [GradesFixtures::absolvoval()]);
 
-    /* Upstream, a malformed rok returns zero rows rather than an error, which
+    /* Upstream, a malformed year returns zero rows rather than an error, which
      * would otherwise read as "you have no grades". */
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['rok' => $rok])
-        ->assertHasErrors();
+        ->tool(GetGradesTool::class, ['year' => $year])
+        ->assertHasErrors(['year must be an academic year as its starting year, e.g. 2025 for 2025/2026.']);
 })->with(['2025/2026', 'abcd', 1800]);
 
 it('explains an empty result rather than returning an empty list', function () {
     GradesFixtures::fake([], []);
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetGradesTool::class, ['os_cislo' => 'A24B0001P']);
+        ->tool(GetGradesTool::class, ['student_id' => 'A24B0001P']);
 
     /* A foreign osCislo comes back empty upstream instead of 403, so the tool
      * has to say so rather than implying the student has no grades. */

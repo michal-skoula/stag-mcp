@@ -28,7 +28,7 @@ it('assembles a StudyRecord from the three STAG endpoints', function () {
 
     $subject = $record->subjects()[0]->toArray();
 
-    expect($subject)->toMatchArray(['nazev' => 'Databázové systémy 1', 'kredity' => 6]);
+    expect($subject)->toMatchArray(['name' => 'Databázové systémy 1', 'credits' => 6]);
 });
 
 it('forwards osCislo to getZnamkyByStudent', function () {
