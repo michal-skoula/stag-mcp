@@ -8,6 +8,7 @@ use App\Mcp\Tools\GetKalendarTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
 use App\Mcp\Tools\GetUcitelInfoTool;
 use App\Mcp\Tools\GetZnamkyTool;
+use App\Mcp\Tools\ListExamDatesTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
@@ -37,6 +38,7 @@ class StagMcpServer extends Server
         StudyAdvisorTool::class,
         SearchUciteleTool::class,
         GetUcitelInfoTool::class,
+        ListExamDatesTool::class,
     ];
 
     protected array $resources = [
