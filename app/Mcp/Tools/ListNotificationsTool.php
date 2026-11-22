@@ -19,7 +19,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('list-notifications')]
 #[Title('List notifications')]
-#[Description('Lists notifications sent by STAG.')]
+#[Description('The caller\'s STAG notifications (oznámení): subject line, message, when it was sent and read, and any attached link. Call it for "anything new from the school" or before marking notifications read. Takes no arguments for the unread ones; set include_read for the read ones too, or since to cut off older ones. Newest first.')]
 #[IsReadOnly]
 class ListNotificationsTool extends Tool
 {
@@ -33,11 +33,11 @@ class ListNotificationsTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'show_read' => $schema->boolean()
-                ->description('Also show read notifications. Returns only unread by default.')
+            'include_read' => $schema->boolean()
+                ->description('Also return notifications already read. Off by default, so only unread ones come back.')
                 ->default(false),
-            'newer_than' => $schema->string()
-                ->description('Only show notifications after a given date. YYYY-MM-DD format.'),
+            'since' => $schema->string()
+                ->description('Only notifications sent on or after this date, as YYYY-MM-DD.'),
         ];
     }
 
@@ -47,7 +47,7 @@ class ListNotificationsTool extends Tool
     public function outputSchema(JsonSchema $schema): array
     {
         return [
-            'count' => $schema->integer()
+            'total' => $schema->integer()
                 ->description('How many notifications were returned.'),
             'notifications' => $schema->array()
                 ->description('The notifications, newest first.')
@@ -70,18 +70,21 @@ class ListNotificationsTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
-            'show_read' => ['boolean', 'nullable'],
-            'newer_than' => ['date_format:Y-m-d', 'nullable'],
+            'include_read' => ['boolean', 'nullable'],
+            'since' => ['date_format:Y-m-d', 'nullable'],
+        ], [
+            'include_read' => 'include_read must be true or false.',
+            'since' => 'since must be a date as YYYY-MM-DD, e.g. 2026-09-01.',
         ]);
 
         // STAG parses these in Java, where only the literal "true" is truthy. A PHP
         // bool would serialize to "1" and silently read as false.
         $params = [
-            'jenNeprectene' => $this->toStagBoolean(! ($validated['show_read'] ?? false)),
+            'jenNeprectene' => $this->toStagBoolean(! ($validated['include_read'] ?? false)),
         ];
 
-        if (isset($validated['newer_than'])) {
-            $params['fromTimestamp'] = Carbon::createFromFormat('Y-m-d', $validated['newer_than'])
+        if (isset($validated['since'])) {
+            $params['fromTimestamp'] = Carbon::createFromFormat('Y-m-d', $validated['since'])
                 ->startOfDay()
                 ->getTimestampMs();
         }
@@ -89,7 +92,7 @@ class ListNotificationsTool extends Tool
         $notifications = $stag->get('oznameni/list', $params);
 
         return Response::structured([
-            'count' => count($notifications),
+            'total' => count($notifications),
             'notifications' => array_map($this->toNotification(...), $notifications),
         ]);
     }

@@ -55,21 +55,21 @@ it('asks only for unread notifications by default', function () {
     Http::assertSent(fn ($request) => $request['jenNeprectene'] === 'true');
 });
 
-it('asks for every notification when show_read is set', function () {
+it('asks for every notification when include_read is set', function () {
     Http::fake([STAG_LIST => Http::response([])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class, ['show_read' => true])
+        ->tool(ListNotificationsTool::class, ['include_read' => true])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['jenNeprectene'] === 'false');
 });
 
-it('converts newer_than to a midnight millisecond timestamp', function () {
+it('converts since to a midnight millisecond timestamp', function () {
     Http::fake([STAG_LIST => Http::response([])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class, ['newer_than' => '2026-09-03'])
+        ->tool(ListNotificationsTool::class, ['since' => '2026-09-03'])
         ->assertOk();
 
     $expected = Carbon::parse('2026-09-03 00:00:00')->getTimestampMs();
@@ -88,7 +88,7 @@ it('reshapes the STAG payload into compact english fields', function () {
         ->assertSee('"subject":"Nová aktivita v Moodle"')
         ->assertSee('"sent_at":"2026-09-03T13:54:00')
         ->assertSee('"read_at":"2026-09-04T16:00:00')
-        ->assertSee('"count":1');
+        ->assertSee('"total":1');
 });
 
 it('reports an unread notification with a null read_at', function () {
@@ -107,15 +107,15 @@ it('returns an empty list without erroring', function () {
         ->tool(ListNotificationsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"count":0');
+        ->assertSee('"total":0');
 });
 
-it('rejects a newer_than that is not a date', function () {
+it('rejects a since that is not a date', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListNotificationsTool::class, ['newer_than' => 'yesterday'])
-        ->assertHasErrors();
+        ->tool(ListNotificationsTool::class, ['since' => 'yesterday'])
+        ->assertHasErrors(['since must be a date as YYYY-MM-DD, e.g. 2026-09-01.']);
 
     Http::assertNothingSent();
 });
