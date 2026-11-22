@@ -103,20 +103,20 @@ it('queues one job and marks the record pending', function () {
     expect($user->onboardingSuggestion->status)->toBe(SuggestionStatus::Pending);
 });
 
-it('allows three fetches in a week and refuses the fourth', function () {
+it('allows five fetches in a week and refuses the sixth', function () {
     Queue::fake();
     $user = User::factory()->withStagToken()->create();
 
-    $results = array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 4));
+    $results = array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 6));
 
-    expect($results)->toBe([true, true, true, false]);
+    expect($results)->toBe([true, true, true, true, true, false]);
 });
 
 it('allows fetches again once the week has passed', function () {
     Queue::fake();
     $user = User::factory()->withStagToken()->create();
 
-    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 3));
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, PrefillOnboardingFromStag::MAX_FETCHES));
     $this->travel(7)->days();
 
     expect(PrefillOnboardingFromStag::queueFor($user))->toBeTrue();
@@ -126,7 +126,7 @@ it('counts each user on their own', function () {
     Queue::fake();
     [$first, $second] = User::factory()->withStagToken()->count(2)->create();
 
-    array_map(fn () => PrefillOnboardingFromStag::queueFor($first), range(1, 3));
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($first), range(1, PrefillOnboardingFromStag::MAX_FETCHES));
 
     expect(PrefillOnboardingFromStag::queueFor($second))->toBeTrue();
 });
@@ -134,7 +134,7 @@ it('counts each user on their own', function () {
 it('leaves the record alone when the limit is hit', function () {
     Queue::fake();
     $user = User::factory()->withStagToken()->create();
-    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 3));
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, PrefillOnboardingFromStag::MAX_FETCHES));
     $user->onboardingSuggestion()->update(['status' => SuggestionStatus::Ready]);
 
     PrefillOnboardingFromStag::queueFor($user);

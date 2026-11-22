@@ -125,7 +125,7 @@ it('answers 429 to a refresh once the weekly fetches are used', function () {
     Queue::fake();
     $user = suggestedUser();
 
-    foreach (range(1, 3) as $ignored) {
+    foreach (range(1, PrefillOnboardingFromStag::MAX_FETCHES) as $ignored) {
         $this->actingAs($user)->postJson(route('onboarding.suggestions.refresh'))->assertAccepted();
     }
 

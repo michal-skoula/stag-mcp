@@ -40,7 +40,7 @@ class PrefillOnboardingFromStag implements ShouldBeUnique, ShouldQueue
     public function __construct(public User $user) {}
 
     /** Fetches a user may start within one window, successful or not. */
-    public const int MAX_FETCHES = 3;
+    public const int MAX_FETCHES = 5;
 
     /** The window the limit applies to, in days. */
     public const int WINDOW_DAYS = 7;
