@@ -12,6 +12,7 @@ use App\Mcp\Tools\GetZnamkyTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
+use App\Mcp\Tools\ReportIssueTool;
 use App\Mcp\Tools\SearchPredmetyTool;
 use App\Mcp\Tools\SearchUciteleTool;
 use App\Mcp\Tools\StudyAdvisorTool;
@@ -47,6 +48,7 @@ class StagMcpServer extends Server
         StudyAdvisorTool::class,
         SearchUciteleTool::class,
         GetUcitelInfoTool::class,
+        ReportIssueTool::class,
     ];
 
     /**
