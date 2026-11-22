@@ -2,7 +2,6 @@
 
 use App\Exceptions\StagException;
 use App\Jobs\PrefillOnboardingFromStag;
-use App\Models\OnboardingSuggestion;
 use App\Models\User;
 use App\Services\Onboarding\SuggestionStatus;
 use Illuminate\Http\Client\ConnectionException;
@@ -104,45 +103,43 @@ it('queues one job and marks the record pending', function () {
     expect($user->onboardingSuggestion->status)->toBe(SuggestionStatus::Pending);
 });
 
-it('does not queue again within a day of a successful fetch', function () {
+it('allows three fetches in a week and refuses the fourth', function () {
     Queue::fake();
     $user = User::factory()->withStagToken()->create();
-    $user->onboardingSuggestion()->create(['status' => SuggestionStatus::Ready, 'fetched_at' => now()->subHours(23)]);
+
+    $results = array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 4));
+
+    expect($results)->toBe([true, true, true, false]);
+});
+
+it('allows fetches again once the week has passed', function () {
+    Queue::fake();
+    $user = User::factory()->withStagToken()->create();
+
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 3));
+    $this->travel(7)->days();
+
+    expect(PrefillOnboardingFromStag::queueFor($user))->toBeTrue();
+});
+
+it('counts each user on their own', function () {
+    Queue::fake();
+    [$first, $second] = User::factory()->withStagToken()->count(2)->create();
+
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($first), range(1, 3));
+
+    expect(PrefillOnboardingFromStag::queueFor($second))->toBeTrue();
+});
+
+it('leaves the record alone when the limit is hit', function () {
+    Queue::fake();
+    $user = User::factory()->withStagToken()->create();
+    array_map(fn () => PrefillOnboardingFromStag::queueFor($user), range(1, 3));
+    $user->onboardingSuggestion()->update(['status' => SuggestionStatus::Ready]);
 
     PrefillOnboardingFromStag::queueFor($user);
 
-    Queue::assertNothingPushed();
-});
-
-it('queues again once the last fetch is a day old', function () {
-    Queue::fake();
-    $user = User::factory()->withStagToken()->create();
-    $user->onboardingSuggestion()->create(['status' => SuggestionStatus::Ready, 'fetched_at' => now()->subHours(25)]);
-
-    PrefillOnboardingFromStag::queueFor($user);
-
-    Queue::assertPushed(PrefillOnboardingFromStag::class);
-});
-
-it('queues again after a failed fetch however recent', function () {
-    Queue::fake();
-    $user = User::factory()->withStagToken()->create();
-    $user->onboardingSuggestion()->create(['status' => SuggestionStatus::Failed, 'fetched_at' => now()]);
-
-    PrefillOnboardingFromStag::queueFor($user);
-
-    Queue::assertPushed(PrefillOnboardingFromStag::class);
-});
-
-it('queues regardless of freshness when forced', function () {
-    Queue::fake();
-    $user = User::factory()->withStagToken()->create();
-    $user->onboardingSuggestion()->create(['status' => SuggestionStatus::Ready, 'fetched_at' => now()]);
-
-    PrefillOnboardingFromStag::queueFor($user, force: true);
-
-    Queue::assertPushed(PrefillOnboardingFromStag::class);
-    expect(OnboardingSuggestion::count())->toBe(1);
+    expect($user->onboardingSuggestion()->first()->status)->toBe(SuggestionStatus::Ready);
 });
 
 it('is unique per user', function () {

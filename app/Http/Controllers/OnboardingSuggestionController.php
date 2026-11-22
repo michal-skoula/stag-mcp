@@ -31,13 +31,14 @@ class OnboardingSuggestionController extends Controller
     }
 
     /**
-     * Fetches again, for when the first run failed or the user wants a fresh look.
-     * Needs a live ticket, which the job checks. Answers 202 straight away.
+     * Fetches again, for when the first run failed or the user linked the wrong
+     * account. Needs a live ticket, which the job checks. Answers 202 straight
+     * away, or 429 once the fetches allowed per week are used up.
      */
     public function refresh(#[CurrentUser] User $user): JsonResponse
     {
-        PrefillOnboardingFromStag::queueFor($user, force: true);
+        $queued = PrefillOnboardingFromStag::queueFor($user);
 
-        return response()->json(status: 202);
+        return response()->json(status: $queued ? 202 : 429);
     }
 }

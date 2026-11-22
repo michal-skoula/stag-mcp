@@ -10,6 +10,7 @@ use App\Services\Onboarding\SuggestionStatus;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
 
 /**
@@ -38,22 +39,39 @@ class PrefillOnboardingFromStag implements ShouldBeUnique, ShouldQueue
 
     public function __construct(public User $user) {}
 
+    /** Fetches a user may start within one window, successful or not. */
+    public const int MAX_FETCHES = 3;
+
+    /** The window the limit applies to, in days. */
+    public const int WINDOW_DAYS = 7;
+
     /**
      * Queues a fetch and marks the record pending, so a page can show
-     * "loading" straight away. A fetch from the last day is not repeated
-     * unless `$force` is set, because STAG tickets are re-issued all the time
-     * and each link would otherwise cost a round of STAG calls.
+     * "loading" straight away. Returns false, and queues nothing, once the
+     * user has used up their fetches for the window. Linking the wrong
+     * account is the case the allowance is for, so it is more than one.
      */
-    public static function queueFor(User $user, bool $force = false): void
+    public static function queueFor(User $user): bool
     {
-        if (! $force && $user->onboardingSuggestion?->isFresh()) {
-            return;
+        $key = self::rateLimitKey($user);
+
+        if (RateLimiter::tooManyAttempts($key, self::MAX_FETCHES)) {
+            return false;
         }
+
+        RateLimiter::hit($key, self::WINDOW_DAYS * 86400);
 
         $user->onboardingSuggestion()->updateOrCreate([], ['status' => SuggestionStatus::Pending]);
         $user->unsetRelation('onboardingSuggestion');
 
         self::dispatch($user);
+
+        return true;
+    }
+
+    private static function rateLimitKey(User $user): string
+    {
+        return 'onboarding-prefill:'.$user->getKey();
     }
 
     public function uniqueId(): string

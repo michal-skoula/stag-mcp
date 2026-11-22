@@ -19,9 +19,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class OnboardingSuggestion extends Model
 {
-    /** A fetch younger than this is not repeated when the user links STAG again. */
-    public const int FRESH_HOURS = 24;
-
     protected $guarded = [];
 
     /**
@@ -40,15 +37,6 @@ class OnboardingSuggestion extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    /**
-     * Whether a successful fetch is recent enough to skip a new one.
-     */
-    public function isFresh(): bool
-    {
-        return $this->status === SuggestionStatus::Ready
-            && $this->fetched_at?->gt(now()->subHours(self::FRESH_HOURS)) === true;
     }
 
     /**

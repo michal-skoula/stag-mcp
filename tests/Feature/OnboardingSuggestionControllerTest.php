@@ -111,7 +111,7 @@ it('rejects an empty confirmation', function () {
         ->assertJsonValidationErrors('answers');
 });
 
-it('queues a forced refresh even when the last fetch is fresh', function () {
+it('queues a refresh', function () {
     Queue::fake();
     $user = suggestedUser();
 
@@ -119,6 +119,17 @@ it('queues a forced refresh even when the last fetch is fresh', function () {
 
     Queue::assertPushed(PrefillOnboardingFromStag::class);
     expect($user->onboardingSuggestion()->first()->status)->toBe(SuggestionStatus::Pending);
+});
+
+it('answers 429 to a refresh once the weekly fetches are used', function () {
+    Queue::fake();
+    $user = suggestedUser();
+
+    foreach (range(1, 3) as $ignored) {
+        $this->actingAs($user)->postJson(route('onboarding.suggestions.refresh'))->assertAccepted();
+    }
+
+    $this->actingAs($user)->postJson(route('onboarding.suggestions.refresh'))->assertStatus(429);
 });
 
 it('only ever shows the signed-in user their own suggestions', function () {
