@@ -21,11 +21,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-znamky')]
-#[Title('Get Znamky')]
+#[Name('get-grades')]
+#[Title('Get grades')]
 #[Description("The caller's grades and study progress: per subject the exam and zápočet outcome, attempt count, date, examiner and credits, plus a summary with credits earned and the weighted average. Defaults to the current semester, so it answers \"what have I done and what is still open\" without arguments; pass all_years for the whole degree. Subject status comes from STAG's own completion code, not from the grade, because a zápočet-only subject has no numeric grade and an unfinished one is sometimes recorded as a 4.")]
 #[IsReadOnly]
-class GetZnamkyTool extends Tool
+class GetGradesTool extends Tool
 {
     use RequiresStagLogin;
     use ResolvesStagIdentity;
@@ -60,7 +60,7 @@ class GetZnamkyTool extends Tool
             'zkratka' => $schema->string()
                 ->description('Only subjects whose code contains this, case-insensitive, e.g. "MA1".'),
             'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) to fetch grades for, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
+                ->description('Personal number (osCislo) to fetch grades for, for accounts holding more than one STAG role. Resolved automatically when omitted; call get-profile to see the roles an account holds.'),
         ];
     }
 

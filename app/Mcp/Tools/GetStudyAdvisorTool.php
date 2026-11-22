@@ -20,10 +20,10 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-study-advisor')]
-#[Title('Get Study Advisor')]
-#[Description("The caller's study advisor (studijní referentka): the person to contact about enrolment, study plans, interruptions, transcripts and paperwork. Returns their name, email and phone, which office they sit in, and their published office hours. Not the same as a teacher or a supervisor - for those use who-am-i or the subject tools.")]
+#[Title('Get study advisor')]
+#[Description("The caller's study advisor (studijní referentka): the person to contact about enrolment, study plans, interruptions, transcripts and paperwork. Returns their name, email and phone, which office they sit in, and their published office hours. Not the same as a teacher or a supervisor - for those use get-profile or the subject tools.")]
 #[IsReadOnly]
-class StudyAdvisorTool extends Tool
+class GetStudyAdvisorTool extends Tool
 {
     use RequiresStagLogin;
     use ResolvesStagIdentity;
@@ -38,7 +38,7 @@ class StudyAdvisorTool extends Tool
     {
         return [
             'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) whose advisor to look up, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
+                ->description('Personal number (osCislo) whose advisor to look up, for accounts holding more than one STAG role. Resolved automatically when omitted; call get-profile to see the roles an account holds.'),
         ];
     }
 
@@ -57,7 +57,7 @@ class StudyAdvisorTool extends Tool
                 'phone' => $nullableString()->description('Phone exactly as STAG stores it, which is a free-text field. For study-office staff this is a full dialable number; teaching staff often put a four-digit internal extension, or occasionally something that is not a phone number at all, in the same field. Do not assume it can be dialled from outside the university without looking at it.'),
                 'offices' => $schema->array()->description('Where they sit. Usually one entry; more when they hold phone lines in different rooms. Empty when no business card is published.')
                     ->items($schema->object([
-                        'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-budovy for an address.'),
+                        'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-buildings for an address.'),
                         'room' => $nullableString()->description('Room number within the building.'),
                         'workplace' => $nullableString()->description('Workplace abbreviation, e.g. "DAV" for the FAV dean\'s office.'),
                     ])),
@@ -87,7 +87,7 @@ class StudyAdvisorTool extends Tool
         $osCislo = $validated['os_cislo'] ?? $this->resolveOsCislo($stag);
 
         if ($osCislo === null) {
-            return Response::error('Could not resolve an osCislo for this account. Pass os_cislo explicitly, or call who-am-i to see which roles it holds.');
+            return Response::error('Could not resolve an osCislo for this account. Pass os_cislo explicitly, or call get-profile to see which roles it holds.');
         }
 
         $info = $stag->get('student/getStudentInfo', ['osCislo' => $osCislo]);
@@ -111,7 +111,7 @@ class StudyAdvisorTool extends Tool
         }
 
         /*
-         * Not returned: get-ucitel-info would take it, but for a referentka it
+         * Not returned: get-teacher would take it, but for a referentka it
          * adds nothing this tool doesn't already answer, and it means nothing
          * to a reader. It is fetched because it is the only key the business
          * card can be looked up by.

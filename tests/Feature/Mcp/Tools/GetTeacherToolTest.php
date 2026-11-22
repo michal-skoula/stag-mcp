@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetUcitelInfoTool;
+use App\Mcp\Tools\GetTeacherTool;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
@@ -105,14 +105,14 @@ function fakeUcitel(array $info = [], mixed $vizitka = null, mixed $garanti = nu
 function getUcitel(array $arguments = ['teacher_id' => 17098]): mixed
 {
     return StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetUcitelInfoTool::class, $arguments);
+        ->tool(GetTeacherTool::class, $arguments);
 }
 
 it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetUcitelInfoTool::class, ['teacher_id' => 17098])
+        ->tool(GetTeacherTool::class, ['teacher_id' => 17098])
         ->assertHasErrors();
 
     Http::assertNothingSent();

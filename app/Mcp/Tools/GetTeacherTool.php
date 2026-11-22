@@ -18,11 +18,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-ucitel-info')]
-#[Title('Get Ucitel Info')]
-#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, and which study programmes they guarantee. Find the teacher_id with search-ucitele first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them.')]
+#[Name('get-teacher')]
+#[Title('Get teacher')]
+#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, and which study programmes they guarantee. Find the teacher_id with search-teachers first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them.')]
 #[IsReadOnly]
-class GetUcitelInfoTool extends Tool
+class GetTeacherTool extends Tool
 {
     use RequiresStagLogin;
 
@@ -36,7 +36,7 @@ class GetUcitelInfoTool extends Tool
     {
         return [
             'teacher_id' => $schema->integer()
-                ->description('The teacher_id (ucitIdno) from search-ucitele, or from any subject or timetable tool that lists teachers.')
+                ->description('The teacher_id (ucitIdno) from search-teachers, or from any subject or timetable tool that lists teachers.')
                 ->required(),
         ];
     }
@@ -64,7 +64,7 @@ class GetUcitelInfoTool extends Tool
             'website' => $nullableString()->description('Personal web page, verbatim. Often lists teaching materials and consultation times.'),
             'offices' => $schema->array()->description('Where they sit. Usually one entry; more when they hold phone lines in different rooms. Empty when no business card is published or the person hid their room.')
                 ->items($schema->object([
-                    'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-budovy for an address.'),
+                    'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-buildings for an address.'),
                     'room' => $nullableString()->description('Room number within the building.'),
                     'workplace' => $nullableString()->description('Workplace abbreviation the room belongs to, e.g. "KIV".'),
                 ])),
@@ -98,7 +98,7 @@ class GetUcitelInfoTool extends Tool
         $info = $stag->get('ucitel/getUcitelInfo', ['ucitIdno' => $teacherId]);
 
         if ($info === [] || array_is_list($info)) {
-            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-ucitele to get a valid id.");
+            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-teachers to get a valid id.");
         }
 
         $card = BusinessCard::fetch($stag, $teacherId);
@@ -143,7 +143,7 @@ class GetUcitelInfoTool extends Tool
      * Passed through verbatim and never normalised: STAG's telefon is free text
      * holding extensions, full numbers, mobiles and even room codes, so any
      * prefixing would invent wrong numbers. The business card's per-line
-     * extensions are left out for the same reason StudyAdvisorTool drops them.
+     * extensions are left out for the same reason GetStudyAdvisorTool drops them.
      *
      * @param  array<string, mixed>  $info
      * @return list<string>
@@ -184,7 +184,7 @@ class GetUcitelInfoTool extends Tool
     }
 
     /**
-     * Same call as StudyAdvisorTool::officeHoursNote(): STAG does hold
+     * Same call as GetStudyAdvisorTool::officeHoursNote(): STAG does hold
      * consultation hours on the business card, but they are recorded rather
      * than observed behaviour. A third of the university writes them off in
      * their own note ("mail me first"), and a stale slot reported as fact

@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetPredmetInfoTool;
+use App\Mcp\Tools\GetSubjectTool;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
@@ -91,7 +91,7 @@ it('works without a STAG token', function () {
     Http::fake([STAG_GET_PREDMET_INFO => Http::response(stagPredmetInfo())]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
         ->assertOk()
         ->assertHasNoErrors();
 });
@@ -100,7 +100,7 @@ it('sends the exact-match filters STAG expects', function () {
     Http::fake([STAG_GET_PREDMET_INFO => Http::response(stagPredmetInfo())]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA', 'rok' => '2026'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA', 'rok' => '2026'])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['katedra'] === 'KIV'
@@ -112,7 +112,7 @@ it('maps identity, credits, and exam fields', function () {
     Http::fake([STAG_GET_PREDMET_INFO => Http::response(stagPredmetInfo())]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
         ->assertOk()
         ->assertSee('"katedra":"KIV"')
         ->assertSee('"zkratka":"UPA"')
@@ -130,7 +130,7 @@ it('splits quoted name lists without breaking on commas inside a name', function
     Http::fake([STAG_GET_PREDMET_INFO => Http::response(stagPredmetInfo())]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
         ->assertOk()
         ->assertSee('"garanti":["Dr. Ing. Karel Dudáček"]')
         ->assertSee('"cvicici_ucit_idno":[53378,247089,17809]')
@@ -141,7 +141,7 @@ it('splits plain comma-separated relation codes', function () {
     Http::fake([STAG_GET_PREDMET_INFO => Http::response(stagPredmetInfo())]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
         ->assertOk()
         ->assertSee('"vylucujici":["KIV/UPA-E"]')
         ->assertSee('"podminujici":[]');
@@ -151,7 +151,7 @@ it('returns a clear error when STAG has no such subject', function () {
     Http::fake([STAG_GET_PREDMET_INFO => Http::response([])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetPredmetInfoTool::class, ['katedra' => 'ZZZ', 'zkratka' => 'NOPE'])
+        ->tool(GetSubjectTool::class, ['katedra' => 'ZZZ', 'zkratka' => 'NOPE'])
         ->assertHasErrors()
         ->assertSee('No subject found');
 });
@@ -159,7 +159,7 @@ it('returns a clear error when STAG has no such subject', function () {
 it('errors when there is no authenticated user', function () {
     Http::fake();
 
-    StagMcpServer::tool(GetPredmetInfoTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
+    StagMcpServer::tool(GetSubjectTool::class, ['katedra' => 'KIV', 'zkratka' => 'UPA'])
         ->assertHasErrors()
         ->assertSee('must send a bearer token');
 

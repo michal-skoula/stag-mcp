@@ -14,7 +14,7 @@ use App\Exceptions\StagException;
  * answers `[]` for them, so an absent card is ordinary rather than an error.
  *
  * Its `uredniHodiny` block is never read. Nobody maintains STAG's copy of
- * office hours, see StudyAdvisorTool::officeHoursNote().
+ * office hours, see GetStudyAdvisorTool::officeHoursNote().
  *
  * @phpstan-type Office array{building: ?string, room: ?string, workplace: ?string}
  */

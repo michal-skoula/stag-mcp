@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetZnamkyTool;
+use App\Mcp\Tools\GetGradesTool;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -42,7 +42,7 @@ it('defaults to the current academic year and semester', function () {
 
     // Test time is 12 September 2026, which is 2026/ZS.
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, []);
+        ->tool(GetGradesTool::class, []);
 
     $response->assertOk()
         ->assertSee('"rok":"2026"')
@@ -56,7 +56,7 @@ it('returns the whole history when all_years is set, ignoring rok/semestr', func
     GradesFixtures::fake($znamky, $absolvoval);
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['all_years' => true]);
+        ->tool(GetGradesTool::class, ['all_years' => true]);
 
     $response->assertOk()
         ->assertSee('"total":14')
@@ -70,7 +70,7 @@ it('never sends katedra/zkratka filters to STAG, which matches them case-sensiti
     GradesFixtures::fake($znamky, $absolvoval);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['all_years' => true, 'katedra' => 'kma', 'zkratka' => 'ma1']);
+        ->tool(GetGradesTool::class, ['all_years' => true, 'katedra' => 'kma', 'zkratka' => 'ma1']);
 
     /* pracZkr/zkrPredm are exact-match and case-sensitive upstream, so "kma"
      * would return nothing. The whole history is fetched and filtered locally. */
@@ -95,7 +95,7 @@ it('returns the whole matching set with no pagination keys', function () {
     GradesFixtures::fake($znamky, $absolvoval);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['all_years' => true])
+        ->tool(GetGradesTool::class, ['all_years' => true])
         ->assertOk()
         ->assertSee('"total":14')
         ->assertDontSee('"offset"')
@@ -107,7 +107,7 @@ it('accepts a blank semestr as an alias for the wildcard', function () {
     GradesFixtures::fake($znamky, $absolvoval);
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['rok' => '2025', 'semestr' => '']);
+        ->tool(GetGradesTool::class, ['rok' => '2025', 'semestr' => '']);
 
     $response->assertOk()->assertSee('"total":14');
 });
@@ -118,7 +118,7 @@ it('rejects a semestr that is not ZS, LS, %, or blank', function () {
     /* Upstream, a garbage semestr silently returns zero rows rather than an
      * error, which would otherwise read as "you have no grades this term". */
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['semestr' => 'XX']);
+        ->tool(GetGradesTool::class, ['semestr' => 'XX']);
 
     $response->assertHasErrors();
     Http::assertNothingSent();
@@ -130,7 +130,7 @@ it('accepts the academic year as a number as well as a string', function (int|st
 
     // Clients send 2025 as readily as "2025" for a field that reads numeric.
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['rok' => $rok, 'semestr' => '%']);
+        ->tool(GetGradesTool::class, ['rok' => $rok, 'semestr' => '%']);
 
     $response->assertOk()
         ->assertSee('"rok":"2025"')
@@ -143,7 +143,7 @@ it('rejects a year that cannot be one instead of reporting an empty record', fun
     /* Upstream, a malformed rok returns zero rows rather than an error, which
      * would otherwise read as "you have no grades". */
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['rok' => $rok])
+        ->tool(GetGradesTool::class, ['rok' => $rok])
         ->assertHasErrors();
 })->with(['2025/2026', 'abcd', 1800]);
 
@@ -151,7 +151,7 @@ it('explains an empty result rather than returning an empty list', function () {
     GradesFixtures::fake([], []);
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetZnamkyTool::class, ['os_cislo' => 'A24B0001P']);
+        ->tool(GetGradesTool::class, ['os_cislo' => 'A24B0001P']);
 
     /* A foreign osCislo comes back empty upstream instead of 403, so the tool
      * has to say so rather than implying the student has no grades. */
@@ -161,7 +161,7 @@ it('explains an empty result rather than returning an empty list', function () {
 it('errors without an authenticated user', function () {
     GradesFixtures::fake([GradesFixtures::znamka()], [GradesFixtures::absolvoval()]);
 
-    StagMcpServer::tool(GetZnamkyTool::class, [])->assertHasErrors();
+    StagMcpServer::tool(GetGradesTool::class, [])->assertHasErrors();
     Http::assertNothingSent();
 });
 
@@ -169,7 +169,7 @@ it('errors when the user has no stag token', function () {
     GradesFixtures::fake([GradesFixtures::znamka()], [GradesFixtures::absolvoval()]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetZnamkyTool::class, [])
+        ->tool(GetGradesTool::class, [])
         ->assertHasErrors();
 
     Http::assertNothingSent();

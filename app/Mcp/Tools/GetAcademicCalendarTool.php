@@ -19,11 +19,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-harmonogram')]
-#[Title('Get Harmonogram')]
-#[Description("Academic year milestones: start/end of semesters, exam periods, and teaching-free days. Use get-kalendar for the caller's actual timetable on a given date.")]
+#[Name('get-academic-calendar')]
+#[Title('Get academic calendar')]
+#[Description("Academic year milestones: start/end of semesters, exam periods, and teaching-free days. Use get-timetable for the caller's actual timetable on a given date.")]
 #[IsReadOnly]
-class GetHarmonogramTool extends Tool
+class GetAcademicCalendarTool extends Tool
 {
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fkalendar
 

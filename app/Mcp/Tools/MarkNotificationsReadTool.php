@@ -17,7 +17,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 
 #[Name('mark-notifications-read')]
-#[Title('Mark Notifications Read')]
+#[Title('Mark notifications read')]
 #[Description('Marks one or more STAG notifications as read. Get the ids from the list-notifications tool.')]
 #[IsIdempotent]
 class MarkNotificationsReadTool extends Tool

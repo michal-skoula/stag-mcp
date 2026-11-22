@@ -19,11 +19,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('list-budovy')]
-#[Title('List Budovy')]
+#[Name('list-buildings')]
+#[Title('List buildings')]
 #[Description('Lists buildings known to STAG, with address and GPS coordinates. Unfiltered this is 80+ buildings - pass city, campus, or address to narrow it down.')]
 #[IsReadOnly]
-class GetBudovyTool extends Tool
+class ListBuildingsTool extends Tool
 {
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fmistnost
 

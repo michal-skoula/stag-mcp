@@ -17,11 +17,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-predmet-info')]
-#[Title('Get Predmet Info')]
-#[Description('Full detail for one STAG subject identified by katedra and zkratka, e.g. from search-predmety: credits, teaching load, exam, staff, syllabus, and related subjects.')]
+#[Name('get-subject')]
+#[Title('Get subject')]
+#[Description('Full detail for one STAG subject identified by katedra and zkratka, e.g. from search-subjects: credits, teaching load, exam, staff, syllabus, and related subjects.')]
 #[IsReadOnly]
-class GetPredmetInfoTool extends Tool
+class GetSubjectTool extends Tool
 {
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fpredmety
 

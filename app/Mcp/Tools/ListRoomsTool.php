@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('list-rooms')]
-#[Title('List Rooms')]
+#[Title('List rooms')]
 #[Description('List university rooms, offices, lecture halls etc. by building, department, or type. Results are paged; use offset to see more than the first count rows.')]
 #[IsReadOnly]
 class ListRoomsTool extends Tool

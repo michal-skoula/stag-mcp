@@ -2,19 +2,19 @@
 
 namespace App\Mcp\Servers;
 
-use App\Mcp\Tools\GetBudovyTool;
-use App\Mcp\Tools\GetHarmonogramTool;
-use App\Mcp\Tools\GetKalendarTool;
-use App\Mcp\Tools\GetPredmetInfoTool;
-use App\Mcp\Tools\GetUcitelInfoTool;
-use App\Mcp\Tools\GetZnamkyTool;
+use App\Mcp\Tools\GetAcademicCalendarTool;
+use App\Mcp\Tools\GetGradesTool;
+use App\Mcp\Tools\GetProfileTool;
+use App\Mcp\Tools\GetStudyAdvisorTool;
+use App\Mcp\Tools\GetSubjectTool;
+use App\Mcp\Tools\GetTeacherTool;
+use App\Mcp\Tools\GetTimetableTool;
+use App\Mcp\Tools\ListBuildingsTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
-use App\Mcp\Tools\SearchPredmetyTool;
-use App\Mcp\Tools\SearchUciteleTool;
-use App\Mcp\Tools\StudyAdvisorTool;
-use App\Mcp\Tools\WhoAmITool;
+use App\Mcp\Tools\SearchSubjectsTool;
+use App\Mcp\Tools\SearchTeachersTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -24,19 +24,19 @@ use Laravel\Mcp\Server\Attributes\Name;
 class StagMcpServer extends Server
 {
     protected array $tools = [
-        WhoAmITool::class,
+        GetProfileTool::class,
         ListNotificationsTool::class,
         MarkNotificationsReadTool::class,
-        GetBudovyTool::class,
+        ListBuildingsTool::class,
         ListRoomsTool::class,
-        SearchPredmetyTool::class,
-        GetPredmetInfoTool::class,
-        GetHarmonogramTool::class,
-        GetKalendarTool::class,
-        GetZnamkyTool::class,
-        StudyAdvisorTool::class,
-        SearchUciteleTool::class,
-        GetUcitelInfoTool::class,
+        SearchSubjectsTool::class,
+        GetSubjectTool::class,
+        GetAcademicCalendarTool::class,
+        GetTimetableTool::class,
+        GetGradesTool::class,
+        GetStudyAdvisorTool::class,
+        SearchTeachersTool::class,
+        GetTeacherTool::class,
     ];
 
     protected array $resources = [

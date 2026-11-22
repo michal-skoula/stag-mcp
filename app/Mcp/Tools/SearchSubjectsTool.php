@@ -17,11 +17,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('search-predmety')]
-#[Title('Search Predmety')]
-#[Description('Searches STAG subjects by name, department, or abbreviation — all substring matches. Leave every filter out to page through the whole catalog. Results are paged; use offset to see more than the first count rows. Use get-predmet-info afterward for full detail on a specific subject.')]
+#[Name('search-subjects')]
+#[Title('Search subjects')]
+#[Description('Searches STAG subjects by name, department, or abbreviation — all substring matches. Leave every filter out to page through the whole catalog. Results are paged; use offset to see more than the first count rows. Use get-subject afterward for full detail on a specific subject.')]
 #[IsReadOnly]
-class SearchPredmetyTool extends Tool
+class SearchSubjectsTool extends Tool
 {
     use PaginatesResponses;
     use RequiresStagLogin;
@@ -60,7 +60,7 @@ class SearchPredmetyTool extends Tool
         return [
             ...$this->paginationOutputSchema($schema, 'subjects'),
             'subjects' => $schema->array()
-                ->description('Matching subjects. Only identifying and offering fields are included — call get-predmet-info for full detail.')
+                ->description('Matching subjects. Only identifying and offering fields are included — call get-subject for full detail.')
                 ->items($schema->object([
                     'katedra' => $schema->string()->description('Department abbreviation.'),
                     'zkratka' => $schema->string()->description('Subject abbreviation.'),

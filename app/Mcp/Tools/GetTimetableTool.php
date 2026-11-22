@@ -22,11 +22,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-kalendar')]
-#[Title('Get Kalendar')]
+#[Name('get-timetable')]
+#[Title('Get timetable')]
 #[Description("The caller's timetable over a date range: classes, seminars, exams and zápočty, each day annotated with the odd/even week marker and whether it's a teaching day. STAG silently omits occurrences that do not happen (holidays, rector's days, ad-hoc cancellations) rather than marking them cancelled, so a day with no events means nothing was scheduled, not that the tool failed to find it.")]
 #[IsReadOnly]
-class GetKalendarTool extends Tool
+class GetTimetableTool extends Tool
 {
     use PaginatesResponses;
     use RequiresStagLogin;
@@ -49,7 +49,7 @@ class GetKalendarTool extends Tool
             'date_to' => $schema->string()
                 ->description('Last date to include, ISO Y-m-d. Defaults to date_from + 13 days.'),
             'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) to fetch the timetable for, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
+                ->description('Personal number (osCislo) to fetch the timetable for, for accounts holding more than one STAG role. Resolved automatically when omitted; call get-profile to see the roles an account holds.'),
             'include_empty_days' => $schema->boolean()
                 ->description('Include every day in the range, even ordinary teaching days with nothing scheduled. Off by default: only days carrying an event, or a reason nothing is scheduled (holiday, exam period, ...), are returned.')
                 ->default(false),

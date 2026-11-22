@@ -68,7 +68,7 @@ final readonly class StudyRecordService
     }
 
     /**
-     * TODO: cache this with a long TTL, same shape as the TO-DO in GetBudovyTool.
+     * TODO: cache this with a long TTL, same shape as the TO-DO in ListBuildingsTool.
      * It answers anonymously, is a couple of kilobytes, and changes roughly
      * never.
      *

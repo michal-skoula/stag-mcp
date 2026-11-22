@@ -10,7 +10,7 @@ use Tests\Fixtures\GradesFixtures;
 /**
  * Needs Http::fake() and a real User (for StagClient), unlike the pure-PHP
  * tests for GradeScales/Subject/StudyRecord — but calls the service directly,
- * never through StagMcpServer/GetZnamkyTool, so it isolates the service's own
+ * never through StagMcpServer/GetGradesTool, so it isolates the service's own
  * boundary (three STAG calls in, one StudyRecord out) instead of exercising
  * it only as a byproduct of a full tool call.
  */

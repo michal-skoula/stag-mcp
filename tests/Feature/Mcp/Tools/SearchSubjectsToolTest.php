@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\SearchPredmetyTool;
+use App\Mcp\Tools\SearchSubjectsTool;
 use App\Models\User;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
@@ -44,7 +44,7 @@ it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(SearchPredmetyTool::class)
+        ->tool(SearchSubjectsTool::class)
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -54,7 +54,7 @@ it('works with no filters, paging through the whole catalog', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => [stagPredmetByFakultaRow()]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class)
+        ->tool(SearchSubjectsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":1');
@@ -64,7 +64,7 @@ it('sends only fakulta, rok, and lang to STAG', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, [
+        ->tool(SearchSubjectsTool::class, [
             'nazev' => 'architektur',
             'katedra' => 'KIV',
             'zkratka' => 'UPA',
@@ -84,7 +84,7 @@ it('matches nazev as a case-insensitive substring', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['nazev' => 'POČÍTAČOVÝCH'])
+        ->tool(SearchSubjectsTool::class, ['nazev' => 'POČÍTAČOVÝCH'])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"zkratka":"UPA"');
@@ -97,13 +97,13 @@ it('matches katedra and zkratka as substrings too', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['katedra' => 'iv'])
+        ->tool(SearchSubjectsTool::class, ['katedra' => 'iv'])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"katedra":"KIV"');
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['zkratka' => 'mat'])
+        ->tool(SearchSubjectsTool::class, ['zkratka' => 'mat'])
         ->assertOk()
         ->assertSee('"total":1')
         ->assertSee('"zkratka":"MAT1"');
@@ -115,7 +115,7 @@ it('maps rows into the narrowed field set with populated teaching flags', functi
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class)
+        ->tool(SearchSubjectsTool::class)
         ->assertOk()
         ->assertSee('"katedra":"KIV"')
         ->assertSee('"zkratka":"UPA"')
@@ -137,7 +137,7 @@ it('defaults to the first 100 subjects', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class)
+        ->tool(SearchSubjectsTool::class)
         ->assertOk()
         ->assertSee('"total":150')
         ->assertSee('"offset":0')
@@ -153,7 +153,7 @@ it('honours a custom count', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['count' => 3])
+        ->tool(SearchSubjectsTool::class, ['count' => 3])
         ->assertOk()
         ->assertSee('"total":10')
         ->assertSee('"count":3');
@@ -168,7 +168,7 @@ it('pages through results with offset', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => $rows])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['count' => 3, 'offset' => 9])
+        ->tool(SearchSubjectsTool::class, ['count' => 3, 'offset' => 9])
         ->assertOk()
         ->assertSee('"total":10')
         ->assertSee('"offset":9')
@@ -180,7 +180,7 @@ it('rejects a count above the maximum', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class, ['count' => 501])
+        ->tool(SearchSubjectsTool::class, ['count' => 501])
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -190,7 +190,7 @@ it('returns an empty list without erroring', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchPredmetyTool::class)
+        ->tool(SearchSubjectsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0')
@@ -200,7 +200,7 @@ it('returns an empty list without erroring', function () {
 it('errors when there is no authenticated user', function () {
     Http::fake();
 
-    StagMcpServer::tool(SearchPredmetyTool::class)
+    StagMcpServer::tool(SearchSubjectsTool::class)
         ->assertHasErrors()
         ->assertSee('must send a bearer token');
 
@@ -208,7 +208,7 @@ it('errors when there is no authenticated user', function () {
 });
 
 it('names subjects in the pagination descriptions', function () {
-    $tool = new SearchPredmetyTool;
+    $tool = new SearchSubjectsTool;
     $input = $tool->schema(new JsonSchemaTypeFactory);
     $output = $tool->outputSchema(new JsonSchemaTypeFactory);
 

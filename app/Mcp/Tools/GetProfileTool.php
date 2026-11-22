@@ -20,11 +20,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('who-am-i')]
-#[Title('Who Am I')]
-#[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form and state (use get-study-advisor for the referentka); a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-znamky and get-kalendar accept. Takes no arguments - it always describes the account behind the ticket.')]
+#[Name('get-profile')]
+#[Title('Get profile')]
+#[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form and state (use get-study-advisor for the referentka); a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-grades and get-timetable accept. Takes no arguments - it always describes the account behind the ticket.')]
 #[IsReadOnly]
-class WhoAmITool extends Tool
+class GetProfileTool extends Tool
 {
     use RequiresStagLogin;
     use ResolvesStagIdentity;
@@ -68,7 +68,7 @@ class WhoAmITool extends Tool
                     'user_name' => $nullableString()->description('Login this role is held under.'),
                     'fakulta' => $nullableString()->description('Faculty abbreviation, e.g. "FAV".'),
                     'katedra' => $nullableString()->description('Department abbreviation, set for teaching roles.'),
-                    'os_cislo' => $nullableString()->description('Personal number. Set for student roles; pass it to get-znamky or get-kalendar.'),
+                    'os_cislo' => $nullableString()->description('Personal number. Set for student roles; pass it to get-grades or get-timetable.'),
                     'ucit_idno' => $nullableInt()->description('Teacher id. Set for teaching roles.'),
                     'email' => $nullableString()->description('Address for this role specifically.'),
                     'student' => $schema->anyOf([$schema->object([

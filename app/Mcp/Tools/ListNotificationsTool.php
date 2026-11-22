@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('list-notifications')]
-#[Title('List Notifications')]
+#[Title('List notifications')]
 #[Description('Lists notifications sent by STAG.')]
 #[IsReadOnly]
 class ListNotificationsTool extends Tool
