@@ -47,8 +47,8 @@ Use this loop to answer, for every endpoint you're about to wrap:
   // then time array_filter over the rows too, it's usually noise next to the network call
   ```
 
-  If it's sub-second and a few MB, that's a better tool than an exact-match filter an agent will just guess wrong. See `SearchPredmetyTool` for the resulting shape.
-- **What's the row shape, really?** Pretty-print a real response and look for: fields that are *always* null (dead columns, drop them from your output rather than shipping dead weight), fields that only sometimes populate depending on which sibling endpoint you called, STAG's boolean vocabulary in that response (`A`/`N` and `ANO`/`NE` both show up, sometimes in the same object), and multi-value string fields that need splitting. Comma-separated bare codes are safe to `explode(',')`; comma-separated *quoted* names or citations are not, since a name like `"Ing. Tomáš Mainzer, Ph.D."` has an internal comma, so split on the quote-comma-quote boundary instead (see `GetPredmetInfoTool::splitQuotedList()`).
+  If it's sub-second and a few MB, that's a better tool than an exact-match filter an agent will just guess wrong. See `SearchSubjectsTool` for the resulting shape.
+- **What's the row shape, really?** Pretty-print a real response and look for: fields that are *always* null (dead columns, drop them from your output rather than shipping dead weight), fields that only sometimes populate depending on which sibling endpoint you called, STAG's boolean vocabulary in that response (`A`/`N` and `ANO`/`NE` both show up, sometimes in the same object), and multi-value string fields that need splitting. Comma-separated bare codes are safe to `explode(',')`; comma-separated *quoted* names or citations are not, since a name like `"Ing. Tomáš Mainzer, Ph.D."` has an internal comma, so split on the quote-comma-quote boundary instead (see `GetSubjectTool::splitQuotedList()`).
 - **What does "not found" look like?** A pinpoint endpoint for an unknown id may return `[]` (empty list) instead of a 404 or an error body (`getPredmetInfo`). Check this explicitly with a bogus id.
 
 Document every non-obvious finding from this pass as a terse bullet in `stag-quirks/SKILL.md` immediately, short and sweet, no prose, see its own writing notes. Do this *during* research, not as an afterthought. It's the shared memory the next tool-writer (or you, in a month) depends on.
@@ -60,20 +60,31 @@ Document every non-obvious finding from this pass as a terse bullet in `stag-qui
 | STAG tolerates anonymous calls | STAG needs a real ticket |
 |---|---|
 | `handle(Request $request, #[CurrentUser('sanctum')] ?User $user = null)`, manual `if ($user === null) return Response::error('No authenticated user. The MCP client must send a bearer token.')`, call `new StagClient($user)` directly, catch `StagException` yourself. | `use RequiresStagLogin;`, implement `protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response` instead of `handle()`. The trait handles the no-user/no-token/expired-token errors and the `StagException` catch for you. |
-| See `GetBudovyTool`, `GetPredmetInfoTool` | See `ListRoomsTool`, `SearchPredmetyTool` |
+| See `ListBuildingsTool`, `GetSubjectTool` | See `ListRoomsTool`, `SearchSubjectsTool` |
 
-Either way, all STAG HTTP calls go through `App\Clients\StagClient`, either `(new StagClient($user))->get('namespace/method', $params)` or `$stag->get(...)` inside `handleForStagUser`. Never call `Http::` directly from a tool.
+Either way, all STAG HTTP calls go through `App\Clients\StagClient`, either `(new StagClient($user))->get('namespace/method', $params)` or `$stag->get(...)` inside `handleAsStagUser`. Never call `Http::` directly from a tool.
 
-**Search-then-pinpoint**, when the namespace has both: one tool that searches/lists with pagination (`use PaginatesResponses;`: spread `paginationInputSchema($schema, 'rooms')`, `paginationOutputSchema($schema, 'rooms')` and `paginationRules()` into the schema, output schema and validate rules, then return `$this->paginate($rows, $validated, 'rooms', $this->toRoom(...))`; defaults to 100, capped at 500, override `paginationDefault()`/`paginationMax()` to change them), and a separate tool that fetches full detail for one identified record. Mention the pairing in each tool's `#[Description]` (e.g. "Use get-predmet-info afterward for full detail").
+**Search-then-pinpoint**, when the namespace has both: one tool that searches/lists with pagination (`use PaginatesResponses;`: spread `paginationInputSchema($schema, 'rooms')`, `paginationOutputSchema($schema, 'rooms')` and `paginationRules()` into the schema, output schema and validate rules, then return `$this->paginate($rows, $validated, 'rooms', $this->toRoom(...))`; defaults to 100, capped at 500, override `paginationDefault()`/`paginationMax()` to change them), and a separate tool that fetches full detail for one identified record. Mention the pairing in each tool's `#[Description]` (e.g. "Use get-subject afterward for full detail").
 
 ## 3. Write it
 
-- Attributes: `#[Name('kebab-case-name')]`, `#[Title('Title Case')]`, `#[Description('...')]`, `#[IsReadOnly]` for anything non-mutating.
+- Attributes: `#[Name('verb-noun')]`, `#[Title('Sentence case')]`, `#[Description('...')]`, `#[IsReadOnly]` for anything non-mutating. Follow the naming conventions below.
 - A `// Docs: https://stag-ws.zcu.cz/ws/web?...&addr=%2Fservices%2Frest2%2F<namespace>` comment at the top of the class, matching every existing tool.
-- Reshape STAG's Czech keys into curated, snake_case, English output; don't pass the raw payload through. Drop dead columns you found in step 1. Group related fields into nested objects when there are many (see `GetPredmetInfoTool`'s `teaching`/`hours`/`exam`/`people`/etc. groups) rather than a flat 60-field bag.
+- Reshape STAG's Czech keys into curated, snake_case, English output; don't pass the raw payload through. Drop dead columns you found in step 1. Group related fields into nested objects when there are many (see `GetSubjectTool`'s `teaching`/`hours`/`exam`/`people`/etc. groups) rather than a flat 60-field bag.
 - Convert STAG booleans explicitly: a small private `fromStagBool(?string $value): ?bool` matching `'A', 'ANO' => true, 'N', 'NE' => false, default => null` (duplicate this per-tool for now; not worth a shared trait until a third tool needs it).
 - **Output schema types must match the real runtime type, not what seems natural.** STAG returns some numeric-looking fields as JSON integers (`"kreditu": 6`) and others as quoted strings (`"praxePocetDnu": "0"`), inconsistently, even within one endpoint. Declaring `anyOf([string])->nullable()` for a field STAG actually sends as an int passes every Pest test (`assertSee` only checks substrings) and still fails MCP schema validation the moment a real client checks it. Check the actual JSON from step 1's tinker output field by field, not by assumption.
+- Every `$request->validate()` call passes a messages array keyed by argument (`'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.'`). One key per argument covers all of its rules. Name the argument as the schema spells it, say what it accepts, give an example. Watch wildcards: a `'ids.*'` message key also matches `ids.required`, so key the item rule explicitly (`'ids.*.integer'`). Paged tools spread `...$this->paginationMessages()`.
 - Handle "not found" and "zero filters" the way step 1 established for that specific endpoint. Don't assume every pinpoint endpoint 404s or every search endpoint requires a filter.
+
+### Naming conventions
+
+Settled once in a single rename pass, because renaming breaks clients. New tools follow them from the start.
+
+- **Tool names:** English kebab-case `verb-noun`. `get-` is one record or one fixed view, `list-` every row of a small set with optional filters, `search-` needs a query and is ranked or paged, `mark-` writes. A pinpoint tool has no `-info` suffix (`get-subject`). No `my-` prefix: the description says when a tool reads the caller's own data. Titles use the same words in sentence case.
+- **Czech terms** stay out of names and keys and appear once in the description, in brackets, so an agent hearing the Czech word finds the tool: "grades (známky)". The one exception is the key `zapocet`, because "credit" clashes with ECTS credits.
+- **Fields**, in and out, are English snake_case. STAG ids are `teacher_id` (ucitIdno), `student_id` (osCislo), `notification_ids`. A subject is `department` + `code` (+ `name`, `year`) everywhere. `year` is the starting year, accepts int or string (`anyOf([string, integer])`, rule `integer|min:1990|max:2100`). Semesters are `winter`/`summer`/`both`. Rooms are `building` + `room`. Language is `language` (`cs`/`en`). Dates are ISO `Y-m-d`, ranges `date_from`/`date_to`, a lone lower bound `since`, timestamps end in `_at`. STAG codes come out as `{code, label}`. Output booleans are plain adjectives (`active`, `accredited`). Boolean filters are `include_x` to widen or `x_only` to narrow, both defaulting to false.
+- **Paging:** `count` (page size) and `offset` in; `total`, `offset`, `count` and the list out. An unpaged list returns `total` and the list, never `count`.
+- **Descriptions** are one paragraph in this order: what it returns (one sentence naming the main fields), when to call it (the questions it answers, Czech term once), what it needs (required arguments, which tool supplies them, defaults), and at most one caveat that changes how the result reads. Agents pick tools from this text, so no filler. Tool output strings get translated later, so keep error messages in the same plain style as the validation messages.
 
 ## 4. Test it
 
@@ -81,7 +92,7 @@ Pest, under `tests/Feature/Mcp/Tools/<Tool>Test.php`, using `StagMcpServer::acti
 
 - A `stagXxx(array $overrides = [])` helper returning **one row shaped exactly like a real response you captured in step 1**, Czech keys, real-looking values, including the null-heavy fields you found. Never invent a shape.
 - `const STAG_..._URL = 'stag-ws.zcu.cz/ws/services/rest2/namespace/method*';` and `Http::fake([STAG_..._URL => Http::response([...])])`.
-- Cover: the anonymous/no-token behavior your auth pattern implies; `Http::assertSent(...)` for the exact params forwarded to STAG; `assertSee`/`assertDontSee` for the narrowed field mapping (including that dropped fields are actually gone); pagination defaults, custom count, offset paging; an over-max `count` rejected with `Http::assertNothingSent()` (validated before any HTTP call); an empty result handled without erroring; no-authenticated-user error.
+- Cover: one bad input per tool asserting the exact validation message with `assertHasErrors(['...'])`; the anonymous/no-token behavior your auth pattern implies; `Http::assertSent(...)` for the exact params forwarded to STAG; `assertSee`/`assertDontSee` for the narrowed field mapping (including that dropped fields are actually gone); pagination defaults, custom count, offset paging; an over-max `count` rejected with `Http::assertNothingSent()` (validated before any HTTP call); an empty result handled without erroring; no-authenticated-user error.
 - `assertSee` matches raw JSON text, and MCP responses encode with `JSON_UNESCAPED_SLASHES`: assert `"a/b"`, not `"a\/b"`.
 - If a command test needs to check more than one substring against the *same* printed line, don't chain multiple `expectsOutputToContain()` calls. Each one latches onto a single console write, and when several checks match the same line, only the first ever gets credited. Either combine into one contiguous substring, or split into separate tests.
 
@@ -89,7 +100,7 @@ Run `vendor/bin/pint --dirty --format agent`, then the narrow test file, then `p
 
 ## 5. Verify against live STAG, the step Pest can't do for you
 
-Pest tests check your code's logic against a fixture you wrote by hand; they cannot catch a mismatch between your declared output schema and what STAG actually returns, because nothing in the test suite validates a response against its own JSON schema. Do that with the real MCP tool, over HTTP, before calling the tool done:
+Every tool test already checks its structured content against the tool's output schema: `Tests\TestCase` binds `Tests\Support\SchemaCheckingCallTool` in place of the `tools/call` handler, so a type mismatch or an undeclared key fails the test with a client-style message (`data/teaching/credits must match a schema in anyOf`). That only proves the schema matches *your fixture*, though. A fixture written by assumption passes against a schema written by the same assumption. Check the real shape with the real MCP tool, over HTTP, before calling the tool done:
 
 ```
 php artisan mcp:inspect --cli --user=you@example.com --tool=your-tool-name --tool-arg=key=value

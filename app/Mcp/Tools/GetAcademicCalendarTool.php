@@ -1,0 +1,219 @@
+<?php
+
+namespace App\Mcp\Tools;
+
+use App\Clients\StagHttpClient;
+use App\Exceptions\StagException;
+use App\Mcp\Concerns\ReportsDataFreshness;
+use App\Mcp\Enums\CalendarPeriod;
+use App\Models\User;
+use App\Services\Stag\ReferenceData;
+use Illuminate\Container\Attributes\CurrentUser;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
+use Illuminate\Support\Carbon;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
+use Laravel\Mcp\Server\Attributes\Description;
+use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Attributes\Title;
+use Laravel\Mcp\Server\Tool;
+use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+
+#[Name('get-academic-calendar')]
+#[Title('Get academic calendar')]
+#[Description("The academic year's schedule (harmonogram): when each semester, teaching period and exam period starts and ends, teaching-free days, and which period STAG considers current. Call it for \"when does the exam period start\", \"when is the last teaching day\" or \"is it the winter semester yet\". year defaults to the current academic year. For the caller's own classes on given dates, use get-timetable. The harmonogram is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy of it, so say it may be out of date.")]
+#[IsReadOnly]
+class GetAcademicCalendarTool extends Tool
+{
+    use ReportsDataFreshness;
+
+    // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fkalendar
+
+    /**
+     * @return array<string, Type>
+     */
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            /*
+             * Accepts a number as well as a string: the year reads
+             * as numeric, and clients send 2025 as often as "2025".
+             */
+            'year' => $schema->anyOf([$schema->string(), $schema->integer()])
+                ->description('Academic year as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
+        ];
+    }
+
+    /**
+     * @return array<string, Type>
+     */
+    public function outputSchema(JsonSchema $schema): array
+    {
+        $nullableString = fn () => $schema->anyOf([$schema->string()])->nullable();
+
+        $period = fn (string $description) => $schema->object([
+            'code' => $schema->string()->description('Raw STAG code, e.g. "ZR".'),
+            'label' => $schema->string()->description('English label for the code.'),
+        ])->description($description);
+
+        return [
+            ...$this->freshnessOutputSchema($schema),
+            'current' => $schema->object([
+                'period' => $period('The period STAG considers current right now.'),
+                'academic_year' => $schema->string()->description('The academic year STAG considers current right now.'),
+                'semester' => $period("STAG's best guess at the semester meant right now. Differs from period during preparation and holiday weeks."),
+            ]),
+            'total' => $schema->integer()->description('How many entries were returned.'),
+            'entries' => $schema->array()
+                ->description('Harmonogram entries plus derived milestones, sorted ascending by date_from.')
+                ->items($schema->object([
+                    'date_from' => $schema->string()->description('ISO date the entry starts.'),
+                    'date_to' => $nullableString()->description('ISO date the entry ends, or null. Always null on every entry observed so far; STAG has not populated this field.'),
+                    'description' => $schema->string()->description("The entry's description. Harmonogram rows keep STAG's Czech text as-is; the derived milestones are given in English."),
+                ])),
+        ];
+    }
+
+    /**
+     * Handle the tool request.
+     */
+    public function handle(Request $request, #[CurrentUser('sanctum')] ?User $user = null): ResponseFactory|Response
+    {
+        if ($user === null) {
+            return Response::error('No authenticated user. The MCP client must send a bearer token.');
+        }
+
+        $validated = $request->validate([
+            'year' => ['integer', 'min:1990', 'max:2100', 'nullable'],
+        ], [
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
+        ]);
+
+        $stag = new StagHttpClient($user);
+
+        try {
+            // Reflects "now" regardless of the requested year, so it is
+            // fetched once and not affected by the 'year' filter below.
+            $obdobi = $stag->get('kalendar/getAktualniObdobiInfo');
+
+            /*
+             * The year is resolved here and always sent, so the cache never
+             * holds "the current year" under a key that outlives 1 September.
+             * The harmonogram is the cached half; getAktualniObdobiInfo is not,
+             * since it answers "right now".
+             */
+            $year = isset($validated['year']) ? (string) $validated['year'] : ($obdobi['akademRok'] ?? $this->currentAcademicYear());
+            $harmonogram = (new ReferenceData($stag))->harmonogram($year);
+        } catch (StagException $e) {
+            return Response::error($e->getMessage());
+        }
+
+        $entries = $this->toEntries($harmonogram->data, $obdobi);
+
+        usort($entries, fn (array $a, array $b) => $a['date_from'] <=> $b['date_from']);
+
+        return Response::structured([
+            ...$this->freshness($harmonogram),
+            'current' => [
+                'period' => $this->toPeriod($obdobi['obdobi'] ?? null),
+                'academic_year' => $obdobi['akademRokInteligentne'] ?? null,
+                'semester' => $this->toPeriod($obdobi['semestrInteligentne'] ?? null),
+            ],
+            'total' => count($entries),
+            'entries' => $entries,
+        ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $harmonogramItems
+     * @param  array<string, mixed>  $obdobi
+     * @return list<array{date_from: string, date_to: ?string, description: string}>
+     */
+    private function toEntries(array $harmonogramItems, array $obdobi): array
+    {
+        return array_merge(
+            array_map($this->harmonogramRowToEntry(...), $harmonogramItems),
+            $this->obdobiToEntries($obdobi),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{date_from: string, date_to: ?string, description: string}
+     */
+    private function harmonogramRowToEntry(array $row): array
+    {
+        return [
+            'date_from' => $this->toIsoDate($row['datumOd']['value'] ?? null),
+            'date_to' => $this->toIsoDate($row['datumDo']['value'] ?? null),
+            'description' => $row['popis'],
+        ];
+    }
+
+    /**
+     * A couple of these can land on the same date as a harmonogram row (e.g.
+     * "Start of the academic year" next to the harmonogram's own "Začátek ak.
+     * roku"). That's left as-is rather than deduped against the harmonogram:
+     * one extra line is cheaper than coupling this to the harmonogram's exact
+     * wording.
+     *
+     * @param  array<string, mixed>  $obdobi
+     * @return list<array{date_from: string, date_to: ?string, description: string}>
+     */
+    private function obdobiToEntries(array $obdobi): array
+    {
+        $fields = [
+            'posledniVyucovaciDenRoku' => 'Last teaching day of the year',
+            'posledniDenSemestruInteligentne' => 'Last day of the current semester',
+            'posledniDenZimnihoZkouskoveho' => 'Last day of the winter exam period',
+            'posledniDenLetnihoZkouskoveho' => 'Last day of the summer exam period',
+            'prvniDenStavajicihoAkademickehoRoku' => 'Start of the academic year',
+            'posledniDenStavajicihoAkademickehoRoku' => 'End of the academic year',
+        ];
+
+        $entries = [];
+
+        foreach ($fields as $field => $description) {
+            $date = $this->toIsoDate($obdobi[$field]['value'] ?? null);
+
+            if ($date !== null) {
+                $entries[] = ['date_from' => $date, 'date_to' => null, 'description' => $description];
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Fallback for when getAktualniObdobiInfo omits `akademRok`: academic
+     * years start on 1 September.
+     */
+    private function currentAcademicYear(): string
+    {
+        $today = Carbon::today();
+
+        return (string) ($today->month >= 9 ? $today->year : $today->year - 1);
+    }
+
+    private function toIsoDate(?string $value): ?string
+    {
+        return $value !== null ? Carbon::createFromFormat('j.n.Y', $value)->toDateString() : null;
+    }
+
+    /**
+     * @return array{code: string, label: string}|null
+     */
+    private function toPeriod(?string $code): ?array
+    {
+        if ($code === null) {
+            return null;
+        }
+
+        return [
+            'code' => $code,
+            'label' => CalendarPeriod::tryFrom($code)?->label() ?? $code,
+        ];
+    }
+}

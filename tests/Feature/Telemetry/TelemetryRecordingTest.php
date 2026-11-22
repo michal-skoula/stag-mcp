@@ -19,19 +19,19 @@ function callTelemetryTool(User $user, string $name, array $arguments = []): voi
 
 it('stores one row per tool call and per STAG call, with user ids only', function () {
     Http::fake(['stag-ws.zcu.cz/*' => Http::response(['items' => []])]);
-    $user = User::factory()->create(['name' => 'Jana Nováková']);
+    $user = User::factory()->withStagToken()->create(['name' => 'Jana Nováková']);
 
-    callTelemetryTool($user, 'list-budovy', ['city' => 'Plzeň']);
+    callTelemetryTool($user, 'list-rooms', ['city' => 'Plzeň']);
 
     $call = ToolCall::sole();
     expect($call->user_id)->toBe($user->id)
-        ->and($call->tool)->toBe('list-budovy')
+        ->and($call->tool)->toBe('list-rooms')
         ->and($call->failed)->toBeFalse();
 
     $stag = StagCall::sole();
     expect($stag->user_id)->toBe($user->id)
-        ->and($stag->tool)->toBe('list-budovy')
-        ->and($stag->endpoint)->toBe('mistnost/getBudovy')
+        ->and($stag->tool)->toBe('list-rooms')
+        ->and($stag->endpoint)->toBe('mistnost/getMistnostiInfo')
         ->and($stag->status)->toBe(200);
 
     expect(json_encode([$call->getAttributes(), $stag->getAttributes()]))
@@ -42,7 +42,7 @@ it('stores one row per tool call and per STAG call, with user ids only', functio
 it('records a failed STAG call with its status', function () {
     Http::fake(['stag-ws.zcu.cz/*' => Http::response('boom', 500)]);
 
-    callTelemetryTool(User::factory()->create(), 'list-budovy');
+    callTelemetryTool(User::factory()->withStagToken()->create(), 'list-rooms');
 
     expect(StagCall::sole()->status)->toBe(500)
         ->and(ToolCall::sole()->failed)->toBeTrue();
@@ -52,7 +52,7 @@ it('stores nothing when telemetry is disabled', function () {
     config(['telemetry.enabled' => false]);
     Http::fake(['stag-ws.zcu.cz/*' => Http::response(['items' => []])]);
 
-    callTelemetryTool(User::factory()->create(), 'list-budovy');
+    callTelemetryTool(User::factory()->withStagToken()->create(), 'list-rooms');
 
     expect(ToolCall::count())->toBe(0)->and(StagCall::count())->toBe(0);
 });
@@ -61,7 +61,7 @@ it('keeps the call working when the telemetry write fails', function () {
     Http::fake(['stag-ws.zcu.cz/*' => Http::response(['items' => []])]);
     Schema::drop('tool_calls');
 
-    callTelemetryTool(User::factory()->create(), 'list-budovy');
+    callTelemetryTool(User::factory()->withStagToken()->create(), 'list-rooms');
 
     expect(StagCall::count())->toBe(1);
 });
@@ -80,7 +80,7 @@ it('prunes rows past the retention window and keeps newer ones', function () {
 });
 
 it('keeps the rows and drops the user link when a user is deleted', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withStagToken()->create();
     ToolCall::factory()->create(['user_id' => $user->id]);
 
     $user->delete();
@@ -89,7 +89,7 @@ it('keeps the rows and drops the user link when a user is deleted', function () 
 });
 
 it('lists tools that were never called in the report', function () {
-    ToolCall::factory()->count(2)->create(['tool' => 'who-am-i', 'user_id' => User::factory()->create()->id]);
+    ToolCall::factory()->count(2)->create(['tool' => 'get-profile', 'user_id' => User::factory()->withStagToken()->create()->id]);
 
     $this->artisan('telemetry:report', ['--days' => 7])
         ->expectsOutputToContain('Never called:')

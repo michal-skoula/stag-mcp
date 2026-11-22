@@ -105,11 +105,11 @@ it('calls a named tool with its arguments in --cli mode', function () {
     $this->artisan('mcp:inspect', [
         '--print' => true,
         '--cli' => true,
-        '--tool' => 'get-predmet-info',
+        '--tool' => 'get-subject',
         '--tool-arg' => ['katedra=KIV', 'zkratka=UPA'],
     ])
         ->expectsOutputToContain(
-            "'--method' 'tools/call' '--tool-name' 'get-predmet-info' '--tool-arg' 'katedra=KIV' '--tool-arg' 'zkratka=UPA'"
+            "'--method' 'tools/call' '--tool-name' 'get-subject' '--tool-arg' 'katedra=KIV' '--tool-arg' 'zkratka=UPA'"
         )
         ->assertSuccessful();
 });

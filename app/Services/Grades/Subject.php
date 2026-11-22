@@ -93,7 +93,6 @@ final class Subject
             'date' => self::toIsoDate($date),
             'teacher' => $teacher,
             'teacher_id' => $teacherId !== null ? (int) $teacherId : null,
-            'language' => self::normalizeValues($row[$prefix.'jazyk'] ?? null),
         ];
     }
 
@@ -109,8 +108,6 @@ final class Subject
 
     /**
      * How many credits this subject is worth.
-     *
-     * @return int|null
      */
     public function credits(): ?int
     {
@@ -124,8 +121,6 @@ final class Subject
 
     /**
      * Unique identifier for the course, e.g. `KIV/IDT`.
-     *
-     * @return string
      */
     public function courseIdentifier(): string
     {
@@ -175,9 +170,7 @@ final class Subject
     /**
      * Marks a subject as superseded.
      *
-     * @param Subject $later By whom it has been superseded.
-     *
-     * @return void
+     * @param  Subject  $later  By whom it has been superseded.
      */
     public function supersededBy(self $later): void
     {
@@ -191,13 +184,6 @@ final class Subject
 
     /**
      * Checks whether these parameters canonically make the same subject as the current instance.
-     *
-     * @param string|null $rok
-     * @param string|null $semestr
-     * @param string|null $katedra
-     * @param string|null $zkratka
-     *
-     * @return bool
      */
     public function matchesSubjectFromParams(?string $rok, ?string $semestr, ?string $katedra, ?string $zkratka): bool
     {
@@ -222,23 +208,36 @@ final class Subject
     public function toArray(): array
     {
         return [
-            'katedra' => $this->katedra,
-            'zkratka' => $this->zkratka,
-            'nazev' => $this->nazev,
-            'kredity' => $this->kredity,
-            'rok' => $this->rok,
-            'semestr' => $this->semestr,
+            'department' => $this->katedra,
+            'code' => $this->zkratka,
+            'name' => $this->nazev,
+            'credits' => $this->kredity,
+            'year' => $this->rok,
+            'semester' => self::semesterName($this->semestr),
             'status' => [
                 'type' => $this->status(),
                 'code' => $this->statusCode,
                 'label' => $this->stav?->label(),
                 'superseded_by' => $this->supersededBy !== null
-                    ? $this->supersededBy->rok.'/'.$this->supersededBy->semestr
+                    ? $this->supersededBy->rok.' '.self::semesterName($this->supersededBy->semestr)
                     : null,
             ],
-            'zkouska' => $this->zkouska,
+            'exam' => $this->zkouska,
             'zapocet' => $this->zapocet,
         ];
+    }
+
+    /**
+     * STAG's ZS/LS as the tool output names them. An unknown code passes
+     * through rather than turning into a wrong guess.
+     */
+    public static function semesterName(string $code): string
+    {
+        return match ($code) {
+            'ZS' => 'winter',
+            'LS' => 'summer',
+            default => $code,
+        };
     }
 
     /**

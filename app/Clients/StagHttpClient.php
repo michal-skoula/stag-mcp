@@ -13,6 +13,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
+use SimpleXMLElement;
 
 /**
  * Talks to the IS-STAG REST services on behalf of one user.
@@ -71,6 +72,43 @@ final readonly class StagHttpClient implements StagClient
     }
 
     /**
+     * For the rare endpoint whose JSON is unusable (`vsp/getStudent` recurses
+     * until Jackson gives up and truncates the body). Returned as SimpleXML
+     * rather than an array on purpose: a generic conversion cannot tell which
+     * elements repeat, so one child comes out as an object and two as a list.
+     * The endpoint's own parser knows which elements are lists, and iterating
+     * SimpleXML treats one and many alike.
+     *
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
+     *
+     * @throws StagException
+     */
+    public function getXml(string $path, array $query = []): SimpleXMLElement
+    {
+        $body = $this->sendRaw(
+            'GET',
+            $path,
+            fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)),
+            accept: 'application/xml',
+        )->body();
+
+        $xml = simplexml_load_string($body, options: LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+
+        return $xml !== false ? $xml : throw StagException::emptyResponse('XML document')->at($path, null);
+    }
+
+    /**
+     * @param  callable(PendingRequest): Response  $call
+     * @return array<array-key, mixed>
+     *
+     * @throws StagException
+     */
+    private function send(string $method, string $path, callable $call): array
+    {
+        return $this->sendRaw($method, $path, $call)->json() ?? [];
+    }
+
+    /**
      * Runs the call and translates every failure into a StagException, so callers
      * catch one type and never surface STAG's Czech error bodies.
      *
@@ -81,23 +119,22 @@ final readonly class StagHttpClient implements StagClient
      * duration. The query string and body are never part of it.
      *
      * @param  callable(PendingRequest): Response  $call
-     * @return array<array-key, mixed>
      *
      * @throws StagException
      */
-    private function send(string $method, string $path, callable $call): array
+    private function sendRaw(string $method, string $path, callable $call, string $accept = 'application/json'): Response
     {
         $started = hrtime(true);
         $status = null;
         $successful = false;
 
         try {
-            $response = $call($this->request());
+            $response = $call($this->request($accept));
             $status = $response->status();
-            $body = $response->throw()->json() ?? [];
+            $response->throw();
             $successful = true;
 
-            return $body;
+            return $response;
         } catch (ConnectionException $e) {
             throw StagException::unreachable($e)->at($path, null);
         } catch (RequestException $e) {
@@ -160,12 +197,12 @@ final readonly class StagHttpClient implements StagClient
      * Most rest2 services answer anonymous callers, so the token is attached only
      * when there is one. An empty WSCOOKIE would be rejected outright.
      */
-    private function request(): PendingRequest
+    private function request(string $accept): PendingRequest
     {
         // Normalizing to always include a trailing slash
         $baseUrl = rtrim(self::BASE_URL, '/').'/';
 
-        $r = Http::baseUrl($baseUrl)->acceptJson();
+        $r = Http::baseUrl($baseUrl)->accept($accept);
 
         return $this->hasStagToken()
             ? $r->withHeaders(['Cookie' => "WSCOOKIE={$this->user->stag_token}"])

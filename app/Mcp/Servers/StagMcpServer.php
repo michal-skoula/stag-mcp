@@ -3,20 +3,26 @@
 namespace App\Mcp\Servers;
 
 use App\Mcp\Methods\InstrumentedCallTool;
-use App\Mcp\Tools\GetBudovyTool;
-use App\Mcp\Tools\GetHarmonogramTool;
-use App\Mcp\Tools\GetKalendarTool;
-use App\Mcp\Tools\GetPredmetInfoTool;
-use App\Mcp\Tools\GetUcitelInfoTool;
-use App\Mcp\Tools\GetZnamkyTool;
+use App\Mcp\Tools\GetAcademicCalendarTool;
+use App\Mcp\Tools\GetGradesTool;
+use App\Mcp\Tools\GetProfileTool;
+use App\Mcp\Tools\GetProgramInfoTool;
+use App\Mcp\Tools\GetStudijniPlanTool;
+use App\Mcp\Tools\GetStudijniPokrokTool;
+use App\Mcp\Tools\GetStudyAdvisorTool;
+use App\Mcp\Tools\GetSubjectTool;
+use App\Mcp\Tools\GetTeacherTool;
+use App\Mcp\Tools\GetTimetableTool;
+use App\Mcp\Tools\ListBuildingsTool;
+use App\Mcp\Tools\ListCertifikatyTool;
+use App\Mcp\Tools\ListExamDatesTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
 use App\Mcp\Tools\ReportIssueTool;
-use App\Mcp\Tools\SearchPredmetyTool;
-use App\Mcp\Tools\SearchUciteleTool;
-use App\Mcp\Tools\StudyAdvisorTool;
-use App\Mcp\Tools\WhoAmITool;
+use App\Mcp\Tools\SearchProgramyTool;
+use App\Mcp\Tools\SearchSubjectsTool;
+use App\Mcp\Tools\SearchTeachersTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -34,20 +40,32 @@ use Laravel\Mcp\Server\Methods\ReadResource;
 #[Instructions('Provides tools and resources for interacting with IS-STAG.')]
 class StagMcpServer extends Server
 {
+    /**
+     * The default page is 15 tools. Clients that do not follow the cursor would
+     * never see the rest, so one page has to hold the whole list.
+     */
+    public int $defaultPaginationLength = 50;
+
     protected array $tools = [
-        WhoAmITool::class,
+        GetProfileTool::class,
         ListNotificationsTool::class,
         MarkNotificationsReadTool::class,
-        GetBudovyTool::class,
+        ListBuildingsTool::class,
         ListRoomsTool::class,
-        SearchPredmetyTool::class,
-        GetPredmetInfoTool::class,
-        GetHarmonogramTool::class,
-        GetKalendarTool::class,
-        GetZnamkyTool::class,
-        StudyAdvisorTool::class,
-        SearchUciteleTool::class,
-        GetUcitelInfoTool::class,
+        SearchSubjectsTool::class,
+        GetSubjectTool::class,
+        GetAcademicCalendarTool::class,
+        GetTimetableTool::class,
+        GetGradesTool::class,
+        GetStudyAdvisorTool::class,
+        SearchTeachersTool::class,
+        GetTeacherTool::class,
+        GetStudijniPlanTool::class,
+        GetStudijniPokrokTool::class,
+        ListCertifikatyTool::class,
+        ListExamDatesTool::class,
+        SearchProgramyTool::class,
+        GetProgramInfoTool::class,
         ReportIssueTool::class,
     ];
 
