@@ -160,3 +160,48 @@ it('keeps a certificate unfinished until its final exam is passed', function () 
         ->and(array_column($before['untaken'], 'code'))->toBe(['KIV/PIZZ'])
         ->and($after['satisfied'])->toBeTrue();
 });
+
+it('counts a block shared by two specialisations once', function () {
+    $audit = auditOf(recordOf([F::row('X/ZAK1', 5, 'A', 'earned')]), F::trackedPlan(), ownPlan: false);
+
+    expect(collect($audit['blocks'])->where('block.name', 'Povinné předměty'))->toHaveCount(1)
+        ->and(auditBlock($audit, 'Povinné předměty')['earned'])->toBe(['X/ZAK1']);
+});
+
+it('needs only as many alternative blocks as the segment asks for', function (array $rows, bool $met) {
+    $audit = auditOf(recordOf($rows), F::trackedPlan(), ownPlan: false);
+
+    expect(auditBlock($audit, 'Sever - blok 1')['choice'])->toBe(['pick' => 1, 'of' => 2, 'met' => $met])
+        ->and(auditBlock($audit, 'Sever - blok 2')['choice'])->toBe(['pick' => 1, 'of' => 2, 'met' => $met])
+        ->and(auditBlock($audit, 'Jih - volitelné')['choice'])->toBeNull();
+})->with([
+    'neither' => [[F::row('X/S1A', 3, 'B', 'earned')], false],
+    'one of two' => [[F::row('X/S2A', 3, 'B', 'earned'), F::row('X/S2B', 3, 'B', 'earned')], true],
+]);
+
+it('sums each track and guesses the student\'s from where the credits are', function () {
+    $audit = auditOf(recordOf([
+        F::row('X/SEV', 4, 'A', 'earned'), F::row('X/S1A', 3, 'B', 'earned'), F::row('X/S1B', 3, 'B', 'in_progress'),
+        F::row('X/J1', 3, 'B', 'earned'),
+    ]), F::trackedPlan(), ownPlan: false);
+
+    expect($audit['tracks'])->toBe([
+        ['name' => 'Specializace Sever', 'credits_earned' => 7.0, 'credits_in_progress' => 3.0, 'satisfied' => false],
+        ['name' => 'Specializace Jih', 'credits_earned' => 3.0, 'credits_in_progress' => 0.0, 'satisfied' => false],
+    ])
+        ->and($audit['likely_track'])->toBe('Specializace Sever');
+});
+
+it('meets a track through its alternatives', function () {
+    $audit = auditOf(recordOf([
+        F::row('X/SEV', 4, 'A', 'earned'), F::row('X/S2A', 3, 'B', 'earned'), F::row('X/S2B', 3, 'B', 'earned'),
+    ]), F::trackedPlan(), ownPlan: false);
+
+    expect($audit['tracks'][0]['satisfied'])->toBeTrue()
+        ->and(auditBlock($audit, 'Sever - blok 1')['satisfied'])->toBeFalse();
+});
+
+it('guesses no track when nothing points either way', function () {
+    expect(auditOf(recordOf([F::row('X/ZAK1', 5, 'A', 'earned')]), F::trackedPlan(), ownPlan: false)['likely_track'])->toBeNull()
+        ->and(auditOf()['tracks'])->toBe([]);
+});

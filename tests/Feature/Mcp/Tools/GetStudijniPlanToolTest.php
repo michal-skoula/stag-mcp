@@ -74,9 +74,9 @@ it('describes blocks and subjects', function () {
 
     getPlan(['stpl_id' => 25230])
         ->assertOk()
-        ->assertSee('"segment":"Softwarové inženýrství","name":"Povinné předměty","kind":"required","min_credits":15,"min_subjects":3,"all_required":true,"subject_count":3')
-        ->assertSee('"name":"Cizí jazyk - povinný","kind":"required","min_credits":4,"min_subjects":1,"all_required":false')
-        ->assertSee('"code":"KIV/DB1","name":"Předmět DB1","credits":6,"exam_type":"exam (zkouška)","recommended_year":1,"recommended_semester":"ZS","hours":"2+2+0","state_exam":false,"excludes":["KIV/DB1-E"]')
+        ->assertSee('"segment":"Softwarové inženýrství","track":null,"name":"Povinné předměty","kind":"required","min_credits":15,"max_credits":null,"min_subjects":3,"choice":null,"all_required":true,"subject_count":3')
+        ->assertSee('"name":"Cizí jazyk - povinný","kind":"required","min_credits":4,"max_credits":null,"min_subjects":1,"choice":null,"all_required":false')
+        ->assertSee('"code":"KIV/DB1","name":"Předmět DB1","credits":6,"exam_type":"exam (zkouška)","recommended_year":1,"recommended_semester":"ZS","hours":"2+2+0","state_exam":false,"excludes":["KIV/DB1-E"],"replaces":[],"prerequisites":[]')
         ->assertSee('"exam_type":"state exam (státní závěrečná zkouška)"')
         ->assertDontSee('<span>')
         ->assertDontSee('Poznámka k plánu');
@@ -87,7 +87,7 @@ it('collapses optional blocks to a count unless asked', function () {
 
     getPlan(['stpl_id' => 25230])
         ->assertOk()
-        ->assertSee('"name":"EU Track-Level1","kind":"optional","min_credits":null,"min_subjects":null,"all_required":false,"subject_count":3,"subjects":null')
+        ->assertSee('"name":"EU Track-Level1","kind":"optional","min_credits":null,"max_credits":null,"min_subjects":null,"choice":null,"all_required":false,"subject_count":3,"subjects":null')
         ->assertDontSee('REK/CHIN1');
 
     getPlan(['stpl_id' => 25230, 'include_optional' => true])

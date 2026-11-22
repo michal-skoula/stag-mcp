@@ -29,7 +29,8 @@ it('audits the caller\'s own plan', function () {
         ->assertOk()
         ->assertSee('"plan":{"stpl_id":25230,"name":"Softwarové inženýrství","own_plan":true,"semesters":6}')
         ->assertSee('"programme":{"credits_required":180,"credits_earned":42,"credits_recognised":0,"year_of_study":2}')
-        ->assertSee('"name":"Povinné předměty","kind":"required","min_credits":15,"min_subjects":3,"satisfied":false,"credits_earned":11,"subjects_earned":2,"credits_in_progress":4,"credits_next_year":0,"remaining_credits":4,"remaining_subjects":1,"earned":["KIV/PPA","KIV/DB1"],"in_progress":["KMA/DMA"]')
+        ->assertSee('"name":"Povinné předměty","kind":"required","min_credits":15,"max_credits":null,"min_subjects":3,"choice":null,"satisfied":false,"credits_earned":11,"subjects_earned":2,"credits_in_progress":4,"credits_next_year":0,"remaining_credits":4,"remaining_subjects":1,"earned":["KIV/PPA","KIV/DB1"],"in_progress":["KMA/DMA"]')
+        ->assertSee('"tracks":[],"likely_track":null')
         ->assertSee('"eu_track":{"credits_earned":0,"credits_in_progress":0,"level1_credits_required":6,"level1_met":false}')
         ->assertSee('"unmatched":[{"code":"KIV/OKS","credits":4,"state":"earned","year":"2026"}]');
 });
@@ -50,7 +51,7 @@ it('drops leftovers of a satisfied pick-some block and the subjects of optional 
 
     getPokrok()
         ->assertOk()
-        ->assertSee('"name":"Tělesná výchova","kind":"elective","min_credits":2,"min_subjects":null,"satisfied":true')
+        ->assertSee('"name":"Tělesná výchova","kind":"elective","min_credits":2,"max_credits":null,"min_subjects":null,"choice":null,"satisfied":true')
         ->assertSee('"earned":["UTS/TV","UTS/TV"],"in_progress":[],"next_year":[],"missing":null,"options":null,"untaken_count":1')
         ->assertDontSee('REK/CHIN1');
 });
@@ -97,4 +98,20 @@ it('reports a broken student document as a STAG fault', function () {
 
     getPokrok()
         ->assertHasErrors(['empty XML document']);
+});
+
+it('stops offering an alternative block once enough of the others are met, and reports tracks', function () {
+    F::fakeStag([
+        F::PLAN_URL => Http::response(F::trackedPlan()),
+        F::STUDENT_URL => Http::response(F::studentXml([['2026', 2, 25141, [
+            F::row('X/SEV', 4, 'A', 'earned'), F::row('X/S2A', 3, 'B', 'earned'), F::row('X/S2B', 3, 'B', 'earned'),
+        ]]]), 200, ['Content-Type' => 'application/xml']),
+    ]);
+
+    getPokrok()
+        ->assertOk()
+        ->assertSee('"track":"Specializace Sever","name":"Sever - blok 1","kind":"elective","min_credits":6,"max_credits":null,"min_subjects":null,"choice":{"pick":1,"of":2,"met":true},"satisfied":false')
+        ->assertSee('"missing":null,"options":null,"untaken_count":2')
+        ->assertSee('"tracks":[{"name":"Specializace Sever","credits_earned":10,"credits_in_progress":0,"satisfied":true}')
+        ->assertSee('"likely_track":"Specializace Sever"');
 });

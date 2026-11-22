@@ -16,6 +16,16 @@ namespace App\Services\StudyPlans;
  * semesters) and once in two blocks (`KIV/PRO`), so neither deduplicating
  * nor keying by code is safe.
  *
+ * Two plan-level shapes need more than a flat list of blocks:
+ *
+ * - A plan with specialisations has one `skupinySegmentu` group per
+ *   specialisation (`orIdno`), and the groups repeat the shared segments
+ *   (the common A block, EU Track). Blocks are kept once by `blokIdno`, and
+ *   a block found in only some groups gets a `track` naming the group.
+ * - A segment's `minPocetAbsBBloku` says how many of its B blocks must be
+ *   completed. When that is fewer than it has (Archeologie: 1 of 2), those
+ *   blocks are alternatives and carry a `choice`.
+ *
  * @phpstan-type Slot array{
  *     slot_id: int,
  *     code: string,
@@ -31,14 +41,18 @@ namespace App\Services\StudyPlans;
  *     replaces: list<string>,
  *     recommended_first: list<string>,
  * }
+ * @phpstan-type Choice array{group: string, pick: int, of: int}
  * @phpstan-type Block array{
  *     id: int,
  *     segment: ?string,
+ *     track: ?string,
  *     name: ?string,
  *     statut: string,
  *     min_credits: ?int,
+ *     max_credits: ?int,
  *     min_subjects: ?int,
  *     all_required: bool,
+ *     choice: ?Choice,
  *     eu_track: bool,
  *     slots: list<Slot>,
  * }
@@ -50,6 +64,7 @@ namespace App\Services\StudyPlans;
  *     valid_for: ?string,
  *     version: ?string,
  *     description_url: ?string,
+ *     tracks: list<string>,
  *     blocks: list<Block>,
  * }
  */
@@ -66,14 +81,21 @@ final readonly class StudyPlan
      */
     public static function fromStag(array $plan, array $planInfo): self
     {
+        $groups = array_values(array_filter($plan['skupinySegmentu'] ?? [], 'is_array'));
+        $tracks = self::trackNames($groups);
         $blocks = [];
 
-        foreach ($plan['skupinySegmentu'] ?? [] as $group) {
+        foreach ($groups as $groupIndex => $group) {
             foreach ($group['segmenty'] ?? [] as $segment) {
                 $segmentName = self::text($segment['nazev'] ?? null) ?? self::nullIfBlank($segment['popis'] ?? null);
+                $track = in_array(self::segmentKey($segment), $tracks['shared'], true) ? null : ($tracks['names'][$groupIndex] ?? null);
+                $choice = self::choice($segment, $groupIndex);
 
                 foreach ($segment['bloky'] ?? [] as $block) {
-                    $blocks[] = self::toBlock($block, $segmentName);
+                    $id = (int) ($block['blokIdno'] ?? 0);
+                    $key = $id > 0 ? "id:{$id}" : 'index:'.count($blocks);
+
+                    $blocks[$key] ??= self::toBlock($block, $segmentName, $track, $choice);
                 }
             }
         }
@@ -86,7 +108,8 @@ final readonly class StudyPlan
             'valid_for' => self::nullIfBlank((string) ($plan['rokPlatnosti'] ?? $planInfo['rokPlatnosti'] ?? '')),
             'version' => self::nullIfBlank((string) ($plan['verze'] ?? $planInfo['verze'] ?? '')),
             'description_url' => self::nullIfBlank($plan['popisPlanuUrl'] ?? null),
-            'blocks' => $blocks,
+            'tracks' => array_values(array_unique(array_filter($tracks['names']))),
+            'blocks' => array_values($blocks),
         ]);
     }
 
@@ -117,6 +140,16 @@ final readonly class StudyPlan
     }
 
     /**
+     * Specialisations the plan splits into, empty for a plan with one path.
+     *
+     * @return list<string>
+     */
+    public function tracks(): array
+    {
+        return $this->plan['tracks'];
+    }
+
+    /**
      * @return list<Block>
      */
     public function blocks(): array
@@ -125,10 +158,78 @@ final readonly class StudyPlan
     }
 
     /**
+     * With one group there are no tracks. With several, a segment present in
+     * every group is shared, and each group is named after the segments only
+     * it has ("FF-B-2026 SPSP-Sociologie, roč. 1,2,3,4").
+     *
+     * @param  list<array<string, mixed>>  $groups
+     * @return array{shared: list<string>, names: array<int, ?string>}
+     */
+    private static function trackNames(array $groups): array
+    {
+        $segmentKeys = array_map(
+            fn (array $group) => array_map(self::segmentKey(...), array_values(array_filter($group['segmenty'] ?? [], 'is_array'))),
+            $groups,
+        );
+
+        if (count($groups) < 2) {
+            return ['shared' => $segmentKeys[0] ?? [], 'names' => []];
+        }
+
+        $shared = array_values(array_intersect(...$segmentKeys));
+        $names = [];
+
+        foreach ($groups as $index => $group) {
+            $own = array_filter(
+                $group['segmenty'] ?? [],
+                fn (mixed $segment) => is_array($segment) && ! in_array(self::segmentKey($segment), $shared, true),
+            );
+            $label = implode(', ', array_filter(array_map(
+                fn (array $segment) => self::text($segment['nazev'] ?? null) ?? self::nullIfBlank($segment['popis'] ?? null),
+                $own,
+            )));
+
+            $names[$index] = $label !== '' ? $label : 'Track '.($index + 1);
+        }
+
+        return ['shared' => $shared, 'names' => $names];
+    }
+
+    /**
+     * @param  array<string, mixed>  $segment
+     */
+    private static function segmentKey(array $segment): string
+    {
+        $id = (int) ($segment['sespIdno'] ?? 0);
+
+        return $id > 0 ? "id:{$id}" : 'name:'.($segment['popis'] ?? '');
+    }
+
+    /**
+     * A segment needing fewer of its B blocks than it has makes them
+     * alternatives. Needing all of them (or setting no number) is no choice.
+     *
+     * @param  array<string, mixed>  $segment
+     * @return Choice|null
+     */
+    private static function choice(array $segment, int $groupIndex): ?array
+    {
+        $pick = self::positiveInt($segment['minPocetAbsBBloku'] ?? null);
+        $of = count(array_filter($segment['bloky'] ?? [], fn (mixed $block) => is_array($block) && strtoupper((string) ($block['statut'] ?? '')) === 'B'));
+
+        if ($pick === null || $pick >= $of) {
+            return null;
+        }
+
+        return ['group' => self::segmentKey($segment).'@'.$groupIndex, 'pick' => $pick, 'of' => $of];
+    }
+
+    /**
      * @param  array<string, mixed>  $block
+     * @param  Choice|null  $choice
      * @return Block
      */
-    private static function toBlock(array $block, ?string $segmentName): array
+    private static function toBlock(array $block, ?string $segmentName, ?string $track, ?array $choice): array
     {
         $statut = strtoupper((string) ($block['statut'] ?? 'C'));
         $name = self::text($block['nazev'] ?? null);
@@ -138,9 +239,12 @@ final readonly class StudyPlan
         return [
             'id' => (int) ($block['blokIdno'] ?? 0),
             'segment' => $segmentName,
+            'track' => $track,
             'name' => $name,
             'statut' => $statut,
             'min_credits' => self::positiveInt($block['minKred'] ?? null),
+            /* Seen once in 45 plans, on a C block: at most 15 of its credits count. */
+            'max_credits' => self::positiveInt($block['maxKred'] ?? null),
             'min_subjects' => $minSubjects,
             /*
              * A count rule below the number of slots makes it a pick-some block
@@ -148,6 +252,7 @@ final readonly class StudyPlan
              * an A block means every subject in it.
              */
             'all_required' => $minSubjects !== null ? $minSubjects >= count($slots) : $statut === 'A',
+            'choice' => $statut === 'B' ? $choice : null,
             'eu_track' => preg_match('/EU\s*Track/i', ($name ?? '').' '.($segmentName ?? '')) === 1,
             'slots' => $slots,
         ];

@@ -94,3 +94,47 @@ it('survives a round trip through the cache shape', function () {
 
     expect(StudyPlan::fromArray($plan->toArray())->toArray())->toBe($plan->toArray());
 });
+
+it('keeps blocks shared by every specialisation once, and names the track of the rest', function () {
+    $plan = StudyPlan::fromStag(StudyPlanFixtures::trackedPlan(), StudyPlanFixtures::planInfo());
+    $blocks = collect($plan->blocks());
+
+    expect($blocks->pluck('name')->all())->toBe([
+        'Povinné předměty', 'Sever - povinné', 'Sever - blok 1', 'Sever - blok 2', 'EU Track-Level1', 'Jih - povinné', 'Jih - volitelné',
+    ])
+        ->and($plan->tracks())->toBe(['Specializace Sever', 'Specializace Jih'])
+        ->and($blocks->firstWhere('name', 'Povinné předměty')['track'])->toBeNull()
+        ->and($blocks->firstWhere('name', 'EU Track-Level1')['track'])->toBeNull()
+        ->and($blocks->firstWhere('name', 'Jih - volitelné')['track'])->toBe('Specializace Jih');
+});
+
+it('has no tracks on a plan with one path', function () {
+    expect(bachelorPlan()->tracks())->toBe([])
+        ->and(array_unique(array_column(bachelorPlan()->blocks(), 'track')))->toBe([null]);
+});
+
+it('marks B blocks as alternatives only when the segment needs fewer of them than it has', function () {
+    $blocks = collect(StudyPlan::fromStag(StudyPlanFixtures::trackedPlan(), [])->blocks());
+
+    expect($blocks->firstWhere('name', 'Sever - blok 1')['choice'])->toMatchArray(['pick' => 1, 'of' => 2])
+        ->and($blocks->firstWhere('name', 'Sever - blok 2')['choice']['group'])->toBe($blocks->firstWhere('name', 'Sever - blok 1')['choice']['group'])
+        ->and($blocks->firstWhere('name', 'Sever - povinné')['choice'])->toBeNull()
+        ->and($blocks->firstWhere('name', 'Jih - volitelné')['choice'])->toBeNull();
+});
+
+it('reads a credit cap, and keeps the prerequisite mapping other schools fill', function () {
+    $plan = StudyPlanFixtures::plan(['Test' => [[
+        ...StudyPlanFixtures::block(1, 'Volitelné', 'C', 0, null, [
+            StudyPlanFixtures::slot('X/B', 3, ['predmet' => [
+                ...StudyPlanFixtures::slot('X/B', 3)['predmet'],
+                'podminujiciPredmety' => [['pracZkr' => 'X', 'zkrPredm' => 'A', 'zkratkaProZobrazeni' => 'X<span>/</span>A']],
+            ]]),
+        ]),
+        'maxKred' => 15,
+    ]]]);
+
+    $block = StudyPlan::fromStag($plan, [])->blocks()[0];
+
+    expect($block['max_credits'])->toBe(15)
+        ->and($block['slots'][0]['prerequisites'])->toBe(['X/A']);
+});

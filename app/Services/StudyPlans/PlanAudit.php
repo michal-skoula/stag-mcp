@@ -21,6 +21,13 @@ namespace App\Services\StudyPlans;
  * It is a greedy fit, not an optimal assignment. On real plans a subject sits
  * in at most two blocks, where greedy and optimal agree.
  *
+ * Two plan-level rules sit on top of the per-block ones. B blocks that are
+ * alternatives ("complete 1 of these 2") get a `choice` saying whether enough
+ * of them are met. A plan with specialisations gets a `tracks` summary with
+ * the work done in each track's own blocks; the student follows one track,
+ * and STAG's student record does not say which, so the one holding the most
+ * credits is reported as `likely_track`.
+ *
  * @phpstan-import-type Block from StudyPlan
  * @phpstan-import-type Slot from StudyPlan
  * @phpstan-import-type Row from StudentRecord
@@ -39,9 +46,13 @@ namespace App\Services\StudyPlans;
  *     in_progress: list<string>,
  *     next_year: list<string>,
  *     untaken: list<Slot>,
+ *     choice: array{pick: int, of: int, met: bool}|null,
  * }
+ * @phpstan-type Track array{name: string, credits_earned: float, credits_in_progress: float, satisfied: bool}
  * @phpstan-type Result array{
  *     blocks: list<BlockResult>,
+ *     tracks: list<Track>,
+ *     likely_track: ?string,
  *     unmatched: list<Row>,
  *     eu_track: array{credits_earned: float, credits_in_progress: float, level1_met: bool}|null,
  * }
@@ -69,9 +80,13 @@ final class PlanAudit
     /** @var array<int, array<int, Fill>> block index => slot index => fill */
     private array $fills = [];
 
+    /** @var list<string> */
+    private array $tracks;
+
     private function __construct(StudyPlan $plan, private readonly bool $ownPlan)
     {
         $this->blocks = $plan->blocks();
+        $this->tracks = $plan->tracks();
     }
 
     /**
@@ -113,8 +128,13 @@ final class PlanAudit
             $results[] = $this->summarise($index, $block);
         }
 
+        $results = $this->withChoices($results);
+        $tracks = $this->trackSummaries($results);
+
         return [
             'blocks' => $results,
+            'tracks' => $tracks,
+            'likely_track' => $this->likelyTrack($tracks),
             'unmatched' => $unmatched,
             'eu_track' => $this->euTrack($results),
         ];
@@ -191,7 +211,68 @@ final class PlanAudit
             'in_progress' => $byState[self::IN_PROGRESS],
             'next_year' => $byState[self::NEXT_YEAR],
             'untaken' => $untaken,
+            'choice' => null,
         ];
+    }
+
+    /**
+     * @param  list<BlockResult>  $results
+     * @return list<BlockResult>
+     */
+    private function withChoices(array $results): array
+    {
+        $met = [];
+
+        foreach ($results as $result) {
+            if (($choice = $result['block']['choice']) !== null) {
+                $met[$choice['group']] = ($met[$choice['group']] ?? 0) + ($result['satisfied'] ? 1 : 0);
+            }
+        }
+
+        return array_map(function (array $result) use ($met) {
+            if (($choice = $result['block']['choice']) !== null) {
+                $result['choice'] = ['pick' => $choice['pick'], 'of' => $choice['of'], 'met' => $met[$choice['group']] >= $choice['pick']];
+            }
+
+            return $result;
+        }, $results);
+    }
+
+    /**
+     * A track is satisfied when every block of its own is met, alternatives
+     * counting through their choice. Shared blocks are reported on their own.
+     *
+     * @param  list<BlockResult>  $results
+     * @return list<Track>
+     */
+    private function trackSummaries(array $results): array
+    {
+        return array_map(function (string $track) use ($results) {
+            $own = array_filter($results, fn (array $result) => $result['block']['track'] === $track);
+
+            return [
+                'name' => $track,
+                'credits_earned' => (float) array_sum(array_column($own, 'credits_earned')),
+                'credits_in_progress' => (float) array_sum(array_column($own, 'credits_in_progress')),
+                'satisfied' => ! in_array(false, array_map(fn (array $result) => $result['satisfied'] || ($result['choice']['met'] ?? false), $own), true),
+            ];
+        }, $this->tracks);
+    }
+
+    /**
+     * @param  list<Track>  $tracks
+     */
+    private function likelyTrack(array $tracks): ?string
+    {
+        $score = fn (array $track) => $track['credits_earned'] + $track['credits_in_progress'];
+
+        usort($tracks, fn (array $a, array $b) => $score($b) <=> $score($a));
+
+        if ($tracks === [] || $score($tracks[0]) <= 0 || (isset($tracks[1]) && $score($tracks[1]) === $score($tracks[0]))) {
+            return null;
+        }
+
+        return $tracks[0]['name'];
     }
 
     /**

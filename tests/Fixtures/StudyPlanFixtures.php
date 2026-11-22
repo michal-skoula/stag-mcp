@@ -122,6 +122,71 @@ final class StudyPlanFixtures
     }
 
     /**
+     * A plan in the shape of a programme with specialisations: one
+     * `skupinySegmentu` group per track, each repeating the shared segments
+     * with the same `sespIdno` and `blokIdno`, as plan 25141 does on STAG.
+     *
+     * @param  list<list<array<string, mixed>>>  $groups  each a list of {@see segment()}
+     * @return array<string, mixed>
+     */
+    public static function groupedPlan(array $groups, int $id = 25141): array
+    {
+        return [
+            ...self::plan([], $id),
+            'skupinySegmentu' => array_map(fn (array $segments, int $index) => [
+                'stplIdno' => $id,
+                'orIdno' => 1294 + $index,
+                'segmenty' => $segments,
+            ], $groups, array_keys($groups)),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $blocks
+     * @return array<string, mixed>
+     */
+    public static function segment(int $id, string $name, array $blocks, ?int $minBBlocks = null): array
+    {
+        return [
+            'sespIdno' => $id,
+            'nazev' => ['valueCs' => $name, 'valueEn' => $name],
+            'popis' => $name,
+            'minCrdBBloku' => null,
+            'minPocetAbsBBloku' => $minBBlocks,
+            'bloky' => $blocks,
+        ];
+    }
+
+    /**
+     * Two specialisations sharing a required block and EU Track, the first
+     * of them offering its B blocks as "complete 1 of these 2", as
+     * Archeologie does.
+     *
+     * @return array<string, mixed>
+     */
+    public static function trackedPlan(): array
+    {
+        $shared = self::segment(100, 'Společný základ', [
+            self::block(20, 'Povinné předměty', 'A', 10, 2, [self::slot('X/ZAK1', 5), self::slot('X/ZAK2', 5)]),
+        ]);
+        $euTrack = self::segment(101, 'EU Track-Level1', [
+            self::block(21, 'EU Track-Level1', 'C', 0, null, [self::slot('REK/BH', 3, ['statut' => 'C'])]),
+        ]);
+
+        return self::groupedPlan([
+            [$shared, self::segment(102, 'Specializace Sever', [
+                self::block(22, 'Sever - povinné', 'A', 4, 1, [self::slot('X/SEV', 4)]),
+                self::block(23, 'Sever - blok 1', 'B', 6, null, [self::slot('X/S1A', 3), self::slot('X/S1B', 3)]),
+                self::block(24, 'Sever - blok 2', 'B', 6, null, [self::slot('X/S2A', 3), self::slot('X/S2B', 3)]),
+            ], minBBlocks: 1), $euTrack],
+            [$shared, self::segment(103, 'Specializace Jih', [
+                self::block(25, 'Jih - povinné', 'A', 4, 1, [self::slot('X/JIH', 4)]),
+                self::block(26, 'Jih - volitelné', 'B', 3, null, [self::slot('X/J1', 3), self::slot('X/J2', 3)]),
+            ], minBBlocks: 1), $euTrack],
+        ]);
+    }
+
+    /**
      * The bachelor plan most tests run against:
      * - an all-required A block, and a state exam block;
      * - "Cizí jazyk", an A block where 1 of 2 is enough;

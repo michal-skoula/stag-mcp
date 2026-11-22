@@ -71,11 +71,18 @@ class GetStudijniPokrokTool extends Tool
             'blocks' => $schema->array()->description('One entry per block of the plan, in plan order.')
                 ->items($schema->object([
                     'segment' => $nullableString()->description('Part of the plan the block belongs to.'),
+                    'track' => $nullableString()->description('The specialisation (one of tracks) this block belongs to, or null when it applies to every student of the plan.'),
                     'name' => $nullableString()->description('Block name in Czech.'),
                     'kind' => $schema->string()->enum(['required', 'elective', 'optional', 'other'])->description('required (A), elective (B: pick enough to meet the rule) or optional (C: no rule).'),
                     'min_credits' => $nullableInteger()->description('Credits the block needs, or null when it sets no credit rule.'),
+                    'max_credits' => $nullableInteger()->description('Most credits from this block that count towards the degree, or null for no cap.'),
                     'min_subjects' => $nullableInteger()->description('Subjects the block needs, or null when it sets no count rule.'),
-                    'satisfied' => $schema->boolean()->description('The block\'s rules are met by passed subjects alone. Optional blocks are always satisfied.'),
+                    'choice' => $schema->anyOf([$schema->object([
+                        'pick' => $schema->integer()->description('How many of the alternative blocks must be satisfied.'),
+                        'of' => $schema->integer()->description('How many alternative blocks there are.'),
+                        'met' => $schema->boolean()->description('Enough of the alternatives are satisfied, so the rest are not needed.'),
+                    ])])->nullable()->description('Set when this elective block is one of several alternatives in its segment, e.g. "complete 1 of these 2 blocks". Null when the block is needed on its own.'),
+                    'satisfied' => $schema->boolean()->description('The block\'s own rules are met by passed subjects alone. Optional blocks are always satisfied. For an alternative block, check choice.met too.'),
                     'credits_earned' => $schema->number()->description('Credits passed or recognised in this block.'),
                     'subjects_earned' => $schema->integer()->description('Subjects passed or recognised in this block.'),
                     'credits_in_progress' => $schema->number()->description('Credits of subjects being studied now. Not earned until passed.'),
@@ -85,10 +92,18 @@ class GetStudijniPokrokTool extends Tool
                     'earned' => $codes()->description('Codes of the subjects passed in this block.'),
                     'in_progress' => $codes()->description('Codes of the subjects being studied now.'),
                     'next_year' => $codes()->description('Codes of the subjects booked for next year.'),
-                    'missing' => $subjects()->description('Subjects not yet taken in a block where every subject is required. Null for blocks where only some are needed.'),
-                    'options' => $subjects()->description('Subjects not yet taken in a block where a few are enough: what is left to choose from. Null for all-required and optional blocks.'),
+                    'missing' => $subjects()->description('Subjects not yet taken in a block where every subject is required. Null for blocks where only some are needed, and for an alternative block that is no longer needed.'),
+                    'options' => $subjects()->description('Subjects not yet taken in a block where a few are enough: what is left to choose from. Null for all-required and optional blocks, for a satisfied block, and for an alternative block that is no longer needed.'),
                     'untaken_count' => $schema->integer()->description('Subjects of the block not yet taken, passed or booked.'),
                 ])),
+            'tracks' => $schema->array()->description('Specialisations the plan splits into, each with the work done in its own blocks. The student follows one of them; STAG does not say which. Empty for a plan with one path.')
+                ->items($schema->object([
+                    'name' => $schema->string()->description('Track name, as the block track field gives it.'),
+                    'credits_earned' => $schema->number()->description('Credits passed in this track\'s own blocks.'),
+                    'credits_in_progress' => $schema->number()->description('Credits being studied now in this track\'s own blocks.'),
+                    'satisfied' => $schema->boolean()->description('Every block of this track is met.'),
+                ])),
+            'likely_track' => $nullableString()->description('The track holding the most passed and in-progress credits, as a guess at the one the student follows. Null when there are no tracks or nothing points either way.'),
             'eu_track' => $schema->anyOf([$schema->object([
                 'credits_earned' => $schema->number()->description('Credits passed from EU Track subjects.'),
                 'credits_in_progress' => $schema->number()->description('Credits of EU Track subjects being studied now.'),
@@ -145,6 +160,8 @@ class GetStudijniPokrokTool extends Tool
             ],
             'programme' => $ownPlan ? $this->programme($record) : null,
             'blocks' => array_map($this->toBlock(...), $audit['blocks']),
+            'tracks' => $audit['tracks'],
+            'likely_track' => $audit['likely_track'],
             'eu_track' => $ownPlan && $audit['eu_track'] !== null ? [
                 'credits_earned' => $audit['eu_track']['credits_earned'],
                 'credits_in_progress' => $audit['eu_track']['credits_in_progress'],
@@ -183,13 +200,18 @@ class GetStudijniPokrokTool extends Tool
         $block = $result['block'];
         $listable = $block['statut'] !== 'C';
         $untaken = array_map($this->toSubject(...), $result['untaken']);
+        /* An alternative nobody needs any more, because enough of the others are met. */
+        $notNeeded = ! $result['satisfied'] && ($result['choice']['met'] ?? false);
 
         return [
             'segment' => $block['segment'],
+            'track' => $block['track'],
             'name' => $block['name'],
             'kind' => $this->blockKind($block['statut']),
             'min_credits' => $block['min_credits'],
+            'max_credits' => $block['max_credits'],
             'min_subjects' => $block['min_subjects'],
+            'choice' => $result['choice'],
             'satisfied' => $result['satisfied'],
             'credits_earned' => $result['credits_earned'],
             'subjects_earned' => $result['subjects_earned'],
@@ -200,9 +222,9 @@ class GetStudijniPokrokTool extends Tool
             'earned' => $result['earned'],
             'in_progress' => $result['in_progress'],
             'next_year' => $result['next_year'],
-            'missing' => $listable && $block['all_required'] ? $untaken : null,
+            'missing' => $listable && $block['all_required'] && ! $notNeeded ? $untaken : null,
             /* A satisfied pick-some block needs nothing more, so its leftovers are noise. */
-            'options' => $listable && ! $block['all_required'] && ! $result['satisfied'] ? $untaken : null,
+            'options' => $listable && ! $block['all_required'] && ! $result['satisfied'] && ! $notNeeded ? $untaken : null,
             'untaken_count' => count($untaken),
         ];
     }
@@ -214,7 +236,7 @@ class GetStudijniPokrokTool extends Tool
         }
 
         if ($ownPlan) {
-            return 'Measured against the plan of the caller\'s latest year of study. Each passed subject counts once, in one block. In-progress credits are not earned until passed. Subjects in unmatched still count towards the programme total.';
+            return 'Measured against the plan of the caller\'s latest year of study. Each passed subject counts once, in one block. In-progress credits are not earned until passed. Subjects in unmatched still count towards the programme total. When tracks is not empty, only the blocks of the student\'s own track (and those with no track) count: confirm the track with the student rather than relying on likely_track.';
         }
 
         return 'Measured against a plan that is not the caller\'s own, using their passed subjects. Only subjects belonging to this plan are shown.';

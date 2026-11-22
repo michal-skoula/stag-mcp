@@ -78,7 +78,10 @@ final readonly class StudentRecord
 
     /**
      * The plan the student is assessed against: the latest year's. Each year
-     * carries its own `stplIdno` because the plan version changes yearly.
+     * carries its own `stplIdno` because plans are re-issued every year, one
+     * version (`verze`) per intake year. The record already points at the
+     * student's own version, so there is no picking by `verze` to do here;
+     * live, this is the same plan `programy/getPlanyStudenta` returns.
      */
     public function currentPlanId(): ?int
     {

@@ -25,7 +25,8 @@ use Illuminate\Support\Facades\Cache;
  */
 final readonly class StudyPlanRepository
 {
-    public const string PLAN_CACHE_PREFIX = 'stag_study_plan_';
+    /** Versioned: a cached plan is the shape {@see StudyPlan::toArray()} had when it was stored. */
+    public const string PLAN_CACHE_PREFIX = 'stag_study_plan_v2_';
 
     public const string CERTIFICATES_CACHE_KEY = 'stag_certificates';
 
@@ -72,6 +73,14 @@ final readonly class StudyPlanRepository
     /**
      * The newest plan of one obor, which for a certificate is the plan to
      * measure against.
+     *
+     * For an enrolled student "newest" would be wrong: plans are re-issued
+     * every year in one version per intake year, and a student stays on their
+     * own intake's version. That plan comes from the student's own record
+     * instead ({@see StudentRecord::currentPlanId()}). A certificate has no
+     * enrolment and so no intake, which leaves this year's newest version, the
+     * one someone starting now would follow. `getPlanyOboru` without `rok`
+     * answers with the current year's plans only.
      *
      * @throws StagException
      */
