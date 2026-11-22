@@ -1,6 +1,7 @@
 <?php
 
 use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use App\Services\Grades\StudyRecordService;
