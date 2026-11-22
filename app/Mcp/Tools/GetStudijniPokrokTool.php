@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\DescribesStudyPlans;
 use App\Mcp\Concerns\RequiresStagLogin;
@@ -126,7 +126,7 @@ class GetStudijniPokrokTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'certificate_id' => ['nullable', 'integer', 'min:1'],

@@ -2,9 +2,10 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\PaginatesResponses;
+use App\Mcp\Concerns\ReportsDataFreshness;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Services\Teachers\TeacherDirectory;
 use App\Services\Teachers\TeacherSearch;
@@ -21,11 +22,12 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('search-ucitele')]
 #[Title('Search Ucitele')]
-#[Description('Finds teachers and other university staff by name, department, or both. Name matching ignores case, diacritics and word order ("sperlova", "Denisa Šperlová"). Best matches come first. Returns teacher_id, the handle other tools use for a person; pass it to get-ucitel-info for their office, phone and the programmes they guarantee. People flagged active: false are still returned on purpose: STAG marks student demonstrators and doctoral assistants inactive while they run labs, so an inactive match may well be the person the user means. Results are paged; use offset to see more than the first count rows.')]
+#[Description('Finds teachers and other university staff by name, department, or both. Name matching ignores case, diacritics and word order ("sperlova", "Denisa Šperlová"). Best matches come first. Returns teacher_id, the handle other tools use for a person; pass it to get-ucitel-info for their office, phone and the programmes they guarantee. People flagged active: false are still returned on purpose: STAG marks student demonstrators and doctoral assistants inactive while they run labs, so an inactive match may well be the person the user means. Results are paged; use offset to see more than the first count rows. The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
 #[IsReadOnly]
 class SearchUciteleTool extends Tool
 {
     use PaginatesResponses;
+    use ReportsDataFreshness;
     use RequiresStagLogin;
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fucitel
@@ -59,6 +61,7 @@ class SearchUciteleTool extends Tool
 
         return [
             ...$this->paginationOutputSchema($schema, 'teachers'),
+            ...$this->freshnessOutputSchema($schema),
             'teachers' => $schema->array()
                 ->description('Matching people, best match first: whole-surname matches, then surname prefixes, then anything else, with active people ahead of inactive ones within each group.')
                 ->items($schema->object([
@@ -82,7 +85,7 @@ class SearchUciteleTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'name' => ['nullable', 'string', 'min:2', 'max:100', 'required_without:department'],
@@ -100,16 +103,17 @@ class SearchUciteleTool extends Tool
 
         $department = isset($validated['department']) ? mb_strtoupper($validated['department']) : null;
 
-        $teachers = (new TeacherDirectory($stag))->search(
+        $result = (new TeacherDirectory($stag))->search(
             $name,
             $department,
             (bool) ($validated['active_only'] ?? false),
             (bool) ($validated['employees_only'] ?? false),
         );
 
-        return Response::structured(
-            $this->paginate($teachers, $validated, 'teachers', $this->toTeacher(...)),
-        );
+        return Response::structured([
+            ...$this->paginate($result->data, $validated, 'teachers', $this->toTeacher(...)),
+            ...$this->freshness($result),
+        ]);
     }
 
     protected function paginationDefault(): int

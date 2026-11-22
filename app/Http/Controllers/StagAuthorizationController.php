@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\PrefillOnboardingFromStag;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\Request;
@@ -36,6 +37,8 @@ class StagAuthorizationController extends Controller
             'stag_token' => $validated['stagUserTicket'],
             'stag_token_valid_until' => $this->expiresAt((bool) ($validated['long'] ?? false)),
         ]);
+
+        PrefillOnboardingFromStag::queueFor($user);
 
         return view('auth.stag.success', [
             'token' => $validated['stagUserTicket'],

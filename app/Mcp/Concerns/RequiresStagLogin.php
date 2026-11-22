@@ -3,6 +3,7 @@
 namespace App\Mcp\Concerns;
 
 use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
@@ -40,7 +41,7 @@ trait RequiresStagLogin
         }
 
         try {
-            return $this->handleAsStagUser($request, new StagHttpClient($user));
+            return $this->handleForStagUser($request, new StagHttpClient($user));
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }
@@ -50,5 +51,5 @@ trait RequiresStagLogin
      * Replaces the `handle()` method for implementors of the `RequiresStagLogin`
      * trait, handling 401 and unauthorized-based errors automatically.
      */
-    abstract protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response;
+    abstract protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response;
 }

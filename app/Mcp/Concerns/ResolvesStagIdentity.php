@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Concerns;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 
 /**
@@ -29,7 +29,7 @@ trait ResolvesStagIdentity
      *
      * @throws StagException
      */
-    protected function resolveIdentity(StagHttpClient $stag): array
+    protected function resolveIdentity(StagClient $stag): array
     {
         return $this->resolvedIdentity ??= $stag->get('help/getStagUserListForActualUserV2');
     }
@@ -37,7 +37,7 @@ trait ResolvesStagIdentity
     /**
      * @throws StagException
      */
-    protected function resolveOsCislo(StagHttpClient $stag): ?string
+    protected function resolveOsCislo(StagClient $stag): ?string
     {
         foreach ($this->resolveIdentity($stag)['stagUserInfo'] ?? [] as $identity) {
             if (! empty($identity['osCislo'])) {

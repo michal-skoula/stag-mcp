@@ -2,7 +2,7 @@
 
 namespace Tests\Fixtures;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Mcp\Concerns\RequiresStagLogin;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -23,7 +23,7 @@ class StagLoginProbeTestTool extends Tool
 {
     use RequiresStagLogin;
 
-    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $stag->get('probe');
 

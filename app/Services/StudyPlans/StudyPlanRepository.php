@@ -2,7 +2,7 @@
 
 namespace App\Services\StudyPlans;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use Illuminate\Support\Facades\Cache;
 
@@ -32,7 +32,7 @@ final readonly class StudyPlanRepository
 
     public const int CACHE_TTL_SECONDS = 604_800;
 
-    public function __construct(private StagHttpClient $stag) {}
+    public function __construct(private StagClient $stag) {}
 
     /**
      * @throws StagException

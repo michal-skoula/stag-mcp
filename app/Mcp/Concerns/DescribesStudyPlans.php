@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Concerns;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Enums\ExamType;
 use App\Services\StudyPlans\StudentRecord;
@@ -81,7 +81,7 @@ trait DescribesStudyPlans
      *
      * @throws StagException
      */
-    protected function resolveStudentOsCislo(StagHttpClient $stag): string
+    protected function resolveStudentOsCislo(StagClient $stag): string
     {
         return $this->resolveOsCislo($stag)
             ?? throw new StagException('This account holds no student role in STAG, so it has no study plan of its own. Pass stpl_id or certificate_id instead.');

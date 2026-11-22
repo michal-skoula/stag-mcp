@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
@@ -80,7 +80,7 @@ class SearchPredmetyTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'nazev' => ['string', 'nullable'],

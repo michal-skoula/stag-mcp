@@ -2,7 +2,7 @@
 
 namespace App\Mcp\Tools;
 
-use App\Clients\StagHttpClient;
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Services\Teachers\BusinessCard;
@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-ucitel-info')]
 #[Title('Get Ucitel Info')]
-#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, and which study programmes they guarantee. Find the teacher_id with search-ucitele first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them.')]
+#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, which study programmes they guarantee, and which subjects they teach this academic year (or another one via year), each with their role (guarantor, lecturer, instructor, seminar leader, examiner). Find the teacher_id with search-ucitele first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them. Their subjects list is the best way to see what they teach, since their timetable can miss them.')]
 #[IsReadOnly]
 class GetUcitelInfoTool extends Tool
 {
@@ -28,6 +28,19 @@ class GetUcitelInfoTool extends Tool
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fucitel
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fvizitka
+    // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fpredmety
+
+    /**
+     * Output role => [ANO/NE flag, share field] on `predmety/getPredmetyByUcitel`.
+     * The examiner flag has no share.
+     */
+    private const array SUBJECT_ROLES = [
+        'guarantor' => ['garant', 'garantPodil'],
+        'lecturer' => ['prednasejici', 'prednasejiciPodil'],
+        'instructor' => ['cvicici', 'cviciciPodil'],
+        'seminar_leader' => ['seminarici', 'seminariciPodil'],
+        'examiner' => ['examinator', null],
+    ];
 
     /**
      * @return array<string, Type>
@@ -38,6 +51,8 @@ class GetUcitelInfoTool extends Tool
             'teacher_id' => $schema->integer()
                 ->description('The teacher_id (ucitIdno) from search-ucitele, or from any subject or timetable tool that lists teachers.')
                 ->required(),
+            'year' => $schema->integer()
+                ->description('Academic year to list subjects for, as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
         ];
     }
 
@@ -78,6 +93,16 @@ class GetUcitelInfoTool extends Tool
                 'specialisation_code' => $nullableString()->description('Specialisation abbreviation, e.g. "INF18bp". Null for a programme guarantor.'),
                 'specialisation_name' => $nullableString()->description('Specialisation name in Czech. Null for a programme guarantor.'),
             ]))])->nullable()->description('Study programmes this person guarantees (garant) this academic year. Empty for most people. Null when STAG refused the lookup, so unknown rather than none.'),
+            'subjects_year' => $schema->anyOf([$schema->integer()])->nullable()->description('Starting year of the academic year the subjects list covers, e.g. 2026 for 2026/2027. Null when STAG listed no subjects and no year was requested, so the current year is not known from the response.'),
+            'subjects' => $schema->anyOf([$schema->array()->items($schema->object([
+                'katedra' => $nullableString()->description('Department abbreviation of the subject, e.g. "KIV". Pass it to get-predmet-info with zkratka.'),
+                'zkratka' => $nullableString()->description('Subject abbreviation, e.g. "PC".'),
+                'nazev' => $nullableString()->description('Subject name, in Czech.'),
+                'roles' => $schema->array()->items($schema->object([
+                    'role' => $schema->string()->enum(['guarantor', 'lecturer', 'instructor', 'seminar_leader', 'examiner'])->description('guarantor (garant), lecturer (přednášející), instructor (cvičící, runs the exercises), seminar_leader (seminárník) or examiner (zkoušející).'),
+                    'share' => $schema->anyOf([$schema->integer()])->nullable()->description('Percentage of that role\'s teaching this person carries, when several people share it. Null for examiner, which has none, or when STAG recorded none.'),
+                ]))->description('Roles held on this subject. Can be empty when STAG lists the subject with every flag off.'),
+            ]))])->nullable()->description('Subjects this person teaches in subjects_year, including student teachers whose timetable may be empty. Empty when they teach nothing that year. Null when STAG refused the lookup, so unknown rather than none.'),
         ];
     }
 
@@ -86,10 +111,11 @@ class GetUcitelInfoTool extends Tool
      *
      * @throws StagException
      */
-    protected function handleAsStagUser(Request $request, StagHttpClient $stag): ResponseFactory|Response
+    protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
+            'year' => ['nullable', 'integer', 'min:1990', 'max:2100'],
         ]);
 
         $teacherId = (int) $validated['teacher_id'];
@@ -121,6 +147,7 @@ class GetUcitelInfoTool extends Tool
             'office_hours_note' => $this->officeHoursNote($card, $info),
             'card_updated' => $card->updated(),
             'guarantees' => $this->guarantees($stag, $teacherId),
+            ...$this->subjects($stag, $teacherId, isset($validated['year']) ? (int) $validated['year'] : null),
         ]);
     }
 
@@ -218,7 +245,7 @@ class GetUcitelInfoTool extends Tool
      *
      * @return list<array<string, ?string>>|null
      */
-    private function guarantees(StagHttpClient $stag, int $teacherId): ?array
+    private function guarantees(StagClient $stag, int $teacherId): ?array
     {
         try {
             $rows = $stag->get('ucitel/getGarant_ProgramOborByUcitIdno', ['ucitIdno' => $teacherId]);
@@ -234,6 +261,64 @@ class GetUcitelInfoTool extends Tool
             'specialisation_code' => $this->nullIfBlank($row['zkratkaOboru'] ?? null),
             'specialisation_name' => $this->nullIfBlank($row['nazevOboru'] ?? null),
         ], array_is_list($rows) ? $rows : []);
+    }
+
+    /**
+     * `rok` is left off the call when no year was asked for, so STAG picks the
+     * current academic year itself. Like the guarantees, a refused call degrades
+     * to null (unknown) instead of failing the tool or claiming "none".
+     *
+     * The `*Podil` shares read 100 even on roles the person does not hold (a
+     * pure instructor still shows `prednasejiciPodil: 100`), so a share is only
+     * reported next to a role whose ANO/NE flag is set.
+     *
+     * @return array{subjects_year: ?int, subjects: list<array<string, mixed>>|null}
+     */
+    private function subjects(StagClient $stag, int $teacherId, ?int $year): array
+    {
+        $query = ['ucitIdno' => $teacherId];
+
+        if ($year !== null) {
+            $query['rok'] = $year;
+        }
+
+        try {
+            $rows = $stag->get('predmety/getPredmetyByUcitel', $query)['predmetUcitele'] ?? [];
+        } catch (StagException) {
+            return ['subjects_year' => $year, 'subjects' => null];
+        }
+
+        $rows = array_is_list($rows) ? $rows : [];
+
+        return [
+            'subjects_year' => $year ?? (isset($rows[0]['rok']) ? (int) $rows[0]['rok'] : null),
+            'subjects' => array_map(fn (array $row) => [
+                'katedra' => $this->nullIfBlank($row['katedra'] ?? null),
+                'zkratka' => $this->nullIfBlank($row['zkratka'] ?? null),
+                'nazev' => $this->nullIfBlank($row['nazev'] ?? null),
+                'roles' => $this->subjectRoles($row),
+            ], $rows),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<array{role: string, share: ?int}>
+     */
+    private function subjectRoles(array $row): array
+    {
+        $roles = [];
+
+        foreach (self::SUBJECT_ROLES as $role => [$flag, $shareField]) {
+            if ($this->fromStagBool($row[$flag] ?? null) !== true) {
+                continue;
+            }
+
+            $share = $shareField !== null ? ($row[$shareField] ?? null) : null;
+            $roles[] = ['role' => $role, 'share' => $share !== null ? (int) $share : null];
+        }
+
+        return $roles;
     }
 
     private function nullIfBlank(?string $value): ?string

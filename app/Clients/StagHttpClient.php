@@ -2,6 +2,7 @@
 
 namespace App\Clients;
 
+use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -22,7 +23,7 @@ use SimpleXMLElement;
  *
  * @see https://is-stag.zcu.cz/napoveda/web-services/ws_prihlasovani.html
  */
-final readonly class StagHttpClient
+final readonly class StagHttpClient implements StagClient
 {
     /** @var string Base URL for all STAG endpoints. */
     private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
