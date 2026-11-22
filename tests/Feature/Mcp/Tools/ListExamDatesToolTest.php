@@ -7,7 +7,7 @@ use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 
-const TERMINY_OS_CISLO = 'X26B0001P';
+require_once __DIR__.'/../../../Fixtures/ExamTerms.php';
 
 beforeEach(function () {
     Carbon::setTestNow(Carbon::parse('2026-11-22 12:00:00', 'Europe/Prague'));
@@ -19,85 +19,6 @@ afterEach(function () {
 });
 
 /**
- * One getTerminyZkousek row, shaped as STAG returns it (captured 22.11.2026,
- * names and contact details replaced).
- *
- * @return array<string, mixed>
- */
-function terminyRow(array $overrides = []): array
-{
-    return array_merge([
-        'termIdno' => 1239020,
-        'ucitIdno' => 10001,
-        'ucitel' => [
-            'ucitIdno' => 10001,
-            'jmeno' => 'Jan',
-            'prijmeni' => 'Novák',
-            'titulPred' => 'Ing.',
-            'titulZa' => 'Ph.D.',
-            'platnost' => 'A',
-            'zamestnanec' => 'A',
-            'katedra' => 'KIV',
-            'pracovisteDalsi' => null,
-            'email' => 'novak@example.com',
-            'telefon' => null,
-            'telefon2' => null,
-            'url' => null,
-            'phdSkolitel' => 'N',
-            'zkrBudovy' => 'UC',
-            'cisloMistnosti' => '304',
-        ],
-        'predmet' => 'DB1',
-        'katedra' => 'KIV',
-        'rok' => '2026',
-        'semestr' => 'ZS',
-        'datum' => ['value' => '11.1.2027'],
-        'obsazeni' => '19',
-        'limit' => '40',
-        'skupinaObsazeni' => null,
-        'skupinaLimit' => null,
-        'nadSkupinaObsazeni' => null,
-        'nadSkupinaLimit' => null,
-        'casOd' => '13:00:00',
-        'casDo' => '15:30:00',
-        'budova' => 'UU',
-        'mistnost' => '108',
-        'kontakt' => null,
-        'poznamka' => null,
-        'opravny' => '1',
-        'deadlineDatumOdhlaseni' => ['value' => '10.1.2027 13:00'],
-        'deadlineDatumPrihlaseni' => ['value' => '11.1.2027 12:00'],
-        'zacatekPrihlasovani' => null,
-        'platnost' => 'A',
-        'typTerminu' => 'Zkouška',
-        'grteIdno' => null,
-    ], $overrides);
-}
-
-/**
- * A getTerminyProStudenta row: the same term plus the student's state, as
- * the WADL's terminProStudentaType declares it.
- *
- * @return array<string, mixed>
- */
-function terminyStudentRow(array $overrides = []): array
-{
-    return array_merge(terminyRow(), [
-        'osCislo' => TERMINY_OS_CISLO,
-        'zapsan' => false,
-        'lzeZapsatOdepsat' => true,
-        'kodDuvoduProcNelzeZapsatOdepsat' => null,
-        'textDuvoduProcNelzeZapsatOdepsat' => null,
-        'popisDuvoduProcNelzeZapsatOdepsat' => null,
-        'frontaZapsan' => false,
-        'frontaLzeZapsatOdepsat' => false,
-        'frontaKodDuvoduProcNelzeZapsatOdepsat' => null,
-        'frontaTextDuvoduProcNelzeZapsatOdepsat' => null,
-        'frontaPopisDuvoduProcNelzeZapsatOdepsat' => null,
-    ], $overrides);
-}
-
-/**
  * Fakes the three reads the tool makes. getTerminyZkousek answers both the
  * search and the student's registered-terms lookup, told apart by osCislo.
  *
@@ -107,27 +28,13 @@ function terminyStudentRow(array $overrides = []): array
  */
 function fakeTerminy(array $search = [], array $student = [], array $registered = [], ?string $osCislo = TERMINY_OS_CISLO, mixed $studentResponse = null): void
 {
-    Http::fake(function (HttpRequest $request) use ($search, $student, $registered, $osCislo, $studentResponse) {
-        $path = parse_url($request->url(), PHP_URL_PATH);
-
-        return match (true) {
-            str_ends_with($path, 'help/getStagUserListForActualUserV2') => Http::response([
-                'jmeno' => 'Jana',
-                'prijmeni' => 'Testová',
-                'stagUserInfo' => [[
-                    'userName' => $osCislo ?? 'TESTOVA',
-                    'role' => $osCislo !== null ? 'ST' : 'VY',
-                    'osCislo' => $osCislo,
-                    'ucitIdno' => $osCislo !== null ? null : 10002,
-                ]],
-            ]),
-            str_ends_with($path, 'terminy/getTerminyProStudenta') => $studentResponse ?? Http::response(['termin' => $student]),
-            str_ends_with($path, 'terminy/getTerminyZkousek') => Http::response([
-                'termin' => isset($request->data()['osCislo']) ? $registered : $search,
-            ]),
-            default => Http::response('unexpected '.$path, 599),
-        };
-    });
+    $fake = new FakeExamStag;
+    $fake->search = $search;
+    $fake->student = $student;
+    $fake->registered = $registered;
+    $fake->osCislo = $osCislo;
+    $fake->studentResponse = $studentResponse;
+    $fake->install();
 }
 
 function listExamDates(array $arguments = []): mixed

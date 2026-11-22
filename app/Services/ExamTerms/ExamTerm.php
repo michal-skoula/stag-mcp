@@ -86,6 +86,66 @@ final readonly class ExamTerm
     }
 
     /**
+     * "KIV/DB1", the way students write a subject.
+     */
+    public function subjectCode(): string
+    {
+        return ($this->row['katedra'] ?? '').'/'.($this->row['predmet'] ?? '');
+    }
+
+    public function timeFrom(): ?string
+    {
+        return self::toTime($this->row['casOd'] ?? null);
+    }
+
+    /**
+     * "UU 108", building and room, or null when STAG has neither.
+     */
+    public function roomLabel(): ?string
+    {
+        $label = trim(implode(' ', array_filter([
+            self::nullIfBlank($this->row['budova'] ?? null),
+            self::nullIfBlank($this->row['mistnost'] ?? null),
+        ])));
+
+        return $label === '' ? null : $label;
+    }
+
+    /**
+     * The four facts a student checks before signing up, which the agent must
+     * restate back before a change goes through.
+     *
+     * @return array{subject: string, date: ?string, time_from: ?string, room: ?string}
+     */
+    public function identifyingFacts(): array
+    {
+        return [
+            'subject' => $this->subjectCode(),
+            'date' => $this->date?->toDateString(),
+            'time_from' => $this->timeFrom(),
+            'room' => $this->roomLabel(),
+        ];
+    }
+
+    public function freePlaces(): ?int
+    {
+        $registered = self::toInt($this->row['obsazeni'] ?? null);
+        $limit = self::toInt($this->row['limit'] ?? null);
+
+        return ($limit !== null && $registered !== null) ? max(0, $limit - $registered) : null;
+    }
+
+    public function registerBy(): ?CarbonImmutable
+    {
+        return self::parseDate($this->row['deadlineDatumPrihlaseni']['value'] ?? null, 'j.n.Y G:i');
+    }
+
+    public function unregisterBy(): ?CarbonImmutable
+    {
+        return self::parseDate($this->row['deadlineDatumOdhlaseni']['value'] ?? null, 'j.n.Y G:i');
+    }
+
+    /**
      * Ascending date and start time, for ordering a mixed list.
      */
     public function sortKey(): string
@@ -99,10 +159,8 @@ final readonly class ExamTerm
     public function toArray(CarbonInterface $now): array
     {
         $row = $this->row;
-        $registered = self::toInt($row['obsazeni'] ?? null);
-        $limit = self::toInt($row['limit'] ?? null);
-        $registerBy = self::parseDate($row['deadlineDatumPrihlaseni']['value'] ?? null, 'j.n.Y G:i');
-        $unregisterBy = self::parseDate($row['deadlineDatumOdhlaseni']['value'] ?? null, 'j.n.Y G:i');
+        $registerBy = $this->registerBy();
+        $unregisterBy = $this->unregisterBy();
         $opensAt = self::parseDate($row['zacatekPrihlasovani']['value'] ?? null, 'j.n.Y G:i');
         $typeLabel = $row['typTerminu'] ?? null;
         $attempts = $row['opravny'] ?? null;
@@ -120,7 +178,7 @@ final readonly class ExamTerm
             'status' => $this->status()?->label() ?? ($row['platnost'] ?? null),
             'date' => $this->date?->toDateString(),
             'time' => [
-                'from' => self::toTime($row['casOd'] ?? null),
+                'from' => $this->timeFrom(),
                 'to' => self::toTime($row['casDo'] ?? null),
             ],
             'location' => [
@@ -129,9 +187,9 @@ final readonly class ExamTerm
             ],
             'examiner' => $this->examiner(),
             'capacity' => [
-                'registered' => $registered,
-                'limit' => $limit,
-                'free' => ($limit !== null && $registered !== null) ? max(0, $limit - $registered) : null,
+                'registered' => self::toInt($row['obsazeni'] ?? null),
+                'limit' => self::toInt($row['limit'] ?? null),
+                'free' => $this->freePlaces(),
             ],
             'group' => isset($row['grteIdno']) ? [
                 'id' => (int) $row['grteIdno'],

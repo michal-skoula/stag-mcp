@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'stag' => [
+        /*
+         * Exposes prepare-exam-registration and confirm-exam-registration,
+         * which register and unregister students for exam terms in production
+         * STAG. Off unless switched on explicitly.
+         */
+        'exam_registration' => (bool) env('STAG_EXAM_REGISTRATION', false),
+    ],
+
 ];

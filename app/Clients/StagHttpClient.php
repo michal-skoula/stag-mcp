@@ -22,14 +22,14 @@ use Illuminate\Support\Facades\Http;
  *
  * @see https://is-stag.zcu.cz/napoveda/web-services/ws_prihlasovani.html
  */
-readonly final class StagHttpClient implements StagClient
+final readonly class StagHttpClient implements StagClient
 {
     /** @var string Base URL for all STAG endpoints. */
     private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
 
     /**
-     * @param User $user MCP Client user
-     * @param bool $showRealExceptions Make endpoints return real STAG errors instead of abstracted error messages
+     * @param  User  $user  MCP Client user
+     * @param  bool  $showRealExceptions  Make endpoints return real STAG errors instead of abstracted error messages
      */
     public function __construct(private User $user, private bool $showRealExceptions = false) {}
 
@@ -42,6 +42,20 @@ readonly final class StagHttpClient implements StagClient
     public function get(string $path, array $query = []): array
     {
         return $this->send(fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
+    }
+
+    /**
+     * For the services answering `text/plain` rather than JSON, such as the
+     * `terminy` writes, which reply with the literal `OK` or a free-text
+     * reason. `get()` would decode either into an empty array.
+     *
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
+     *
+     * @throws StagException
+     */
+    public function getText(string $path, array $query = []): string
+    {
+        return $this->sendRaw(fn (PendingRequest $r) => $r->accept('text/plain')->get($path, $this->withDefaults($query)))->body();
     }
 
     /**
@@ -69,12 +83,6 @@ readonly final class StagHttpClient implements StagClient
     }
 
     /**
-     * Runs the call and translates every failure into a StagException, so callers
-     * catch one type and never surface STAG's Czech error bodies.
-     *
-     * A 401 means different things depending on whether a token was sent at all,
-     * and the two need different instructions back to the user.
-     *
      * @param  callable(PendingRequest): Response  $call
      * @return array<array-key, mixed>
      *
@@ -82,12 +90,28 @@ readonly final class StagHttpClient implements StagClient
      */
     private function send(callable $call): array
     {
+        return $this->sendRaw($call)->json() ?? [];
+    }
+
+    /**
+     * Runs the call and translates every failure into a StagException, so callers
+     * catch one type and never surface STAG's Czech error bodies.
+     *
+     * A 401 means different things depending on whether a token was sent at all,
+     * and the two need different instructions back to the user.
+     *
+     * @param  callable(PendingRequest): Response  $call
+     *
+     * @throws StagException
+     */
+    private function sendRaw(callable $call): Response
+    {
         try {
-            return $call($this->request())->throw()->json() ?? [];
+            return $call($this->request())->throw();
         } catch (ConnectionException $e) {
             throw StagException::unreachable($e);
         } catch (RequestException $e) {
-            if($this->showRealExceptions) {
+            if ($this->showRealExceptions) {
                 throw new StagException('['.$e->response->status().']: '.$e->getMessage(), previous: $e);
             } else {
                 throw match ($e->response->status()) {
@@ -137,7 +161,7 @@ readonly final class StagHttpClient implements StagClient
     private function request(): PendingRequest
     {
         // Normalizing to always include a trailing slash
-        $baseUrl = rtrim(self::BASE_URL, '/') . '/';
+        $baseUrl = rtrim(self::BASE_URL, '/').'/';
 
         $r = Http::baseUrl($baseUrl)->acceptJson();
 

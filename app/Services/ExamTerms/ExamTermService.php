@@ -10,8 +10,8 @@ use App\Exceptions\StagException;
  *
  * Only `getTerminyZkousek` and `getTerminyProStudenta` are called here. The
  * namespace's writes are plain GETs too (`zapisStudentaNaTermin` and friends),
- * so a request to one of them registers or unregisters for real; none of them
- * belongs in this class.
+ * so a request to one of them registers or unregisters for real. Those live
+ * in {@see ExamRegistrar} and nowhere else.
  *
  * Room bookings (`platnost` B) are filtered out on every path. Departments
  * store state exam days, summer schools and conferences as terms, and they
@@ -41,6 +41,30 @@ final readonly class ExamTermService
         ], fn (mixed $value) => $value !== null));
 
         return $this->toTerms($rows);
+    }
+
+    /**
+     * One term by id, or null when STAG has no such term or it is a room booking.
+     *
+     * @throws StagException
+     */
+    public function find(int $termId): ?ExamTerm
+    {
+        return $this->toTerms($this->fetchTerms(['termIdno' => $termId]))[0] ?? null;
+    }
+
+    /**
+     * One term with the student's state attached. Unlike the search path,
+     * a failed state lookup is not swallowed here: a change is never offered
+     * on a term whose state could not be read.
+     *
+     * @throws StagException
+     */
+    public function findForStudent(int $termId, string $osCislo): ?ExamTerm
+    {
+        $term = $this->find($termId);
+
+        return $term === null ? null : $this->withRegistrations([$term], $osCislo, $term->rok())[0];
     }
 
     /**
