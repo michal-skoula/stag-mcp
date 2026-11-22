@@ -30,6 +30,9 @@ final readonly class ReferenceData
     /** A grading scale is a university-wide rule, changed by regulation, not by the semester. */
     public const int GRADING_SCALES_TTL_SECONDS = 2_592_000;
 
+    /** Schools join or leave STAG a few times a decade. */
+    public const int SCHOOLS_TTL_SECONDS = 2_592_000;
+
     /** The yearly calendar is corrected a few times a year at most, so a week of lag is harmless. */
     public const int CALENDAR_TTL_SECONDS = 604_800;
 
@@ -53,6 +56,26 @@ final readonly class ReferenceData
             self::BUILDINGS_TTL_SECONDS,
             // `items` is a wrapper key containing the buildings array.
             fn () => ($this->stag->get('mistnost/getBudovy')['items'] ?? []) ?: throw StagException::emptyResponse('building list'),
+        );
+    }
+
+    /**
+     * `zakaznici/getSeznamProvozovanychWS`, anonymous: every deployment of
+     * STAG, raw and unfiltered ({@see StagSchools} hides and sorts). The list
+     * is never empty (a dozen schools), so an empty answer is a STAG fault and
+     * is not cached.
+     *
+     * @return CachedStagData<list<array<string, mixed>>>
+     *
+     * @throws StagException
+     */
+    public function schools(): CachedStagData
+    {
+        return $this->cache->remember(
+            self::KEY_PREFIX.'schools',
+            self::SCHOOLS_TTL_SECONDS,
+            // `nasazeniAplikace` is a wrapper key containing the deployments array.
+            fn () => ($this->stag->get('zakaznici/getSeznamProvozovanychWS')['nasazeniAplikace'] ?? []) ?: throw StagException::emptyResponse('school list'),
         );
     }
 
