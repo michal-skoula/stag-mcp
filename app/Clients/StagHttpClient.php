@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Http;
 readonly final class StagHttpClient implements StagClient
 {
     /** @var string Base URL for all STAG endpoints. */
-    private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
+    public const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
 
     /**
      * @param User $user MCP Client user
