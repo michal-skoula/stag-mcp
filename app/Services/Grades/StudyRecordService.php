@@ -4,6 +4,7 @@ namespace App\Services\Grades;
 
 use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
+use App\Services\Stag\ReferenceData;
 
 /**
  * Assembles a student's {@see StudyRecord} from the three STAG endpoints it
@@ -36,7 +37,7 @@ final readonly class StudyRecordService
             return StudyRecord::build(rows: [], subjectsCatalogue: [], scales: GradeScales::fromPayload([]));
         }
 
-        return StudyRecord::build($rows, $this->getSubjectsCatalogue(), $this->getGradingScalesFromStag());
+        return StudyRecord::build($rows, $this->getSubjectsCatalogue(), $this->getGradingScales());
     }
 
     /**
@@ -68,14 +69,14 @@ final readonly class StudyRecordService
     }
 
     /**
-     * TODO: cache this with a long TTL, same shape as the TO-DO in GetBudovyTool.
-     * It answers anonymously, is a couple of kilobytes, and changes roughly
-     * never.
+     * Anonymous, a few kilobytes and changes roughly never, so it comes from
+     * the shared reference cache. A stale copy is fine here: the scales are
+     * only read to label grades, so no outdated flag is reported.
      *
      * @throws StagException
      */
-    private function getGradingScalesFromStag(): GradeScales
+    private function getGradingScales(): GradeScales
     {
-        return GradeScales::fromPayload($this->stag->get('znamky/typyHodnoceni'));
+        return GradeScales::fromPayload((new ReferenceData($this->stag))->gradingScales()->data);
     }
 }
