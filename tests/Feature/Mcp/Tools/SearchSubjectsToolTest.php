@@ -60,53 +60,53 @@ it('works with no filters, paging through the whole catalog', function () {
         ->assertSee('"total":1');
 });
 
-it('sends only fakulta, rok, and lang to STAG', function () {
+it('sends only faculty, year and language to STAG', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchSubjectsTool::class, [
-            'nazev' => 'architektur',
-            'katedra' => 'KIV',
-            'zkratka' => 'UPA',
-            'fakulta' => 'FAV',
-            'rok' => '2026',
-            'lang' => 'en',
+            'name' => 'architektur',
+            'department' => 'KIV',
+            'code' => 'UPA',
+            'faculty' => 'FAV',
+            'year' => 2026,
+            'language' => 'en',
         ])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request->data() === ['fakulta' => 'FAV', 'rok' => '2026', 'lang' => 'en']);
 });
 
-it('matches nazev as a case-insensitive substring', function () {
+it('matches name as a case-insensitive substring', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => [
         stagPredmetByFakultaRow(['zkratka' => 'UPA', 'nazev' => 'Úvod do počítačových architektur']),
         stagPredmetByFakultaRow(['zkratka' => 'PRO1', 'nazev' => 'Programování 1']),
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchSubjectsTool::class, ['nazev' => 'POČÍTAČOVÝCH'])
+        ->tool(SearchSubjectsTool::class, ['name' => 'POČÍTAČOVÝCH'])
         ->assertOk()
         ->assertSee('"total":1')
-        ->assertSee('"zkratka":"UPA"');
+        ->assertSee('"code":"UPA"');
 });
 
-it('matches katedra and zkratka as substrings too', function () {
+it('matches department and code as substrings too', function () {
     Http::fake([STAG_GET_PREDMETY_BY_FAKULTA => Http::response(['predmetKatedry' => [
         stagPredmetByFakultaRow(['katedra' => 'KIV', 'zkratka' => 'UPA']),
         stagPredmetByFakultaRow(['katedra' => 'KMA', 'zkratka' => 'MAT1']),
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchSubjectsTool::class, ['katedra' => 'iv'])
+        ->tool(SearchSubjectsTool::class, ['department' => 'iv'])
         ->assertOk()
         ->assertSee('"total":1')
-        ->assertSee('"katedra":"KIV"');
+        ->assertSee('"department":"KIV"');
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(SearchSubjectsTool::class, ['zkratka' => 'mat'])
+        ->tool(SearchSubjectsTool::class, ['code' => 'mat'])
         ->assertOk()
         ->assertSee('"total":1')
-        ->assertSee('"zkratka":"MAT1"');
+        ->assertSee('"code":"MAT1"');
 });
 
 it('maps rows into the narrowed field set with populated teaching flags', function () {
@@ -117,13 +117,13 @@ it('maps rows into the narrowed field set with populated teaching flags', functi
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchSubjectsTool::class)
         ->assertOk()
-        ->assertSee('"katedra":"KIV"')
-        ->assertSee('"zkratka":"UPA"')
-        ->assertSee('"ma_vyuku":true')
-        ->assertSee('"vyuka_zs":true')
-        ->assertSee('"vyuka_ls":false')
-        ->assertSee('"nabizi_prijezdy_ects":false')
-        ->assertSee('"jazyky":["CZ","AN"]')
+        ->assertSee('"department":"KIV"')
+        ->assertSee('"code":"UPA"')
+        ->assertSee('"has_teaching":true')
+        ->assertSee('"taught_in_winter":true')
+        ->assertSee('"taught_in_summer":false')
+        ->assertSee('"offered_to_incoming":false')
+        ->assertSee('"languages":["CZ","AN"]')
         ->assertDontSee('pocetStudentu')
         ->assertDontSee('aMax');
 });
@@ -173,7 +173,7 @@ it('pages through results with offset', function () {
         ->assertSee('"total":10')
         ->assertSee('"offset":9')
         ->assertSee('"count":1')
-        ->assertSee('"zkratka":"SUB10"');
+        ->assertSee('"code":"SUB10"');
 });
 
 it('rejects a count above the maximum', function () {
@@ -181,7 +181,7 @@ it('rejects a count above the maximum', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(SearchSubjectsTool::class, ['count' => 501])
-        ->assertHasErrors();
+        ->assertHasErrors(['count must be a whole number from 1 to 500.']);
 
     Http::assertNothingSent();
 });
@@ -216,4 +216,14 @@ it('names subjects in the pagination descriptions', function () {
         ->and($input['offset']->toArray()['description'])->toContain('subjects')
         ->and($output['total']->toArray()['description'])->toContain('subjects')
         ->and($output['count']->toArray()['description'])->toContain('subjects');
+});
+
+it('names the argument and what it accepts when the language is unknown', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(SearchSubjectsTool::class, ['language' => 'de'])
+        ->assertHasErrors(['language must be "cs" or "en".']);
+
+    Http::assertNothingSent();
 });

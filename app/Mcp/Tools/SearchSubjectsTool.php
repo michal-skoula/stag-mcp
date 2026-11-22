@@ -8,6 +8,7 @@ use App\Mcp\Concerns\PaginatesResponses;
 use App\Mcp\Concerns\RequiresStagLogin;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
+use Illuminate\Validation\Rule;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -19,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('search-subjects')]
 #[Title('Search subjects')]
-#[Description('Searches STAG subjects by name, department, or abbreviation — all substring matches. Leave every filter out to page through the whole catalog. Results are paged; use offset to see more than the first count rows. Use get-subject afterward for full detail on a specific subject.')]
+#[Description('Finds subjects (předměty) in the STAG catalogue by name, department or code, all as case-insensitive substrings, and returns each one\'s department, code, name, semesters taught and languages. Call it to identify a subject the user names loosely ("the architecture course at KIV") before asking for detail. Every filter is optional; with none it pages through the whole catalogue. year defaults to the current academic year. Pass a result\'s department and code to get-subject for credits, teachers and syllabus. Paged with count and offset.')]
 #[IsReadOnly]
 class SearchSubjectsTool extends Tool
 {
@@ -34,18 +35,22 @@ class SearchSubjectsTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'nazev' => $schema->string()
-                ->description('Case-insensitive substring match against the subject name.'),
-            'katedra' => $schema->string()
-                ->description('Case-insensitive substring match against the department abbreviation, e.g. "KIV".'),
-            'zkratka' => $schema->string()
-                ->description('Case-insensitive substring match against the subject abbreviation, e.g. "UPA".'),
-            'fakulta' => $schema->string()
-                ->description('Faculty code to narrow the search to, e.g. "FAV". Sent to STAG directly, unlike the other filters.'),
-            'rok' => $schema->string()
-                ->description('Academic year to filter by, e.g. "2026". Defaults to the current STAG year when omitted.'),
-            'lang' => $schema->string()
-                ->description('Language code for translated fields, e.g. "en". Not validated — passed through as-is.'),
+            'name' => $schema->string()
+                ->description('Part of the subject name, case-insensitive.'),
+            'department' => $schema->string()
+                ->description('Part of the department abbreviation, case-insensitive, e.g. "KIV".'),
+            'code' => $schema->string()
+                ->description('Part of the subject code, case-insensitive, e.g. "UPA".'),
+            'faculty' => $schema->string()
+                ->description('Faculty code, exact, e.g. "FAV".'),
+            /*
+             * Accepts a number as well as a string: the year reads
+             * as numeric, and clients send 2025 as often as "2025".
+             */
+            'year' => $schema->anyOf([$schema->string(), $schema->integer()])
+                ->description('Academic year as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
+            'language' => $schema->string()
+                ->description('Language for the names STAG translates, "cs" or "en". Subjects without a translation keep their Czech name.'),
             ...$this->paginationInputSchema($schema, 'subjects'),
         ];
     }
@@ -60,17 +65,17 @@ class SearchSubjectsTool extends Tool
         return [
             ...$this->paginationOutputSchema($schema, 'subjects'),
             'subjects' => $schema->array()
-                ->description('Matching subjects. Only identifying and offering fields are included — call get-subject for full detail.')
+                ->description('Matching subjects. Only identifying and offering fields are included; call get-subject for full detail.')
                 ->items($schema->object([
-                    'katedra' => $schema->string()->description('Department abbreviation.'),
-                    'zkratka' => $schema->string()->description('Subject abbreviation.'),
-                    'rok' => $schema->string()->description('Academic year.'),
-                    'nazev' => $schema->string()->description('Subject name.'),
-                    'ma_vyuku' => $nullableBool()->description('Currently has teaching, or null.'),
-                    'vyuka_zs' => $nullableBool()->description('Taught in winter semester, or null.'),
-                    'vyuka_ls' => $nullableBool()->description('Taught in summer semester, or null.'),
-                    'nabizi_prijezdy_ects' => $nullableBool()->description('Offered to incoming ECTS students, or null.'),
-                    'jazyky' => $schema->array()->description('Languages of instruction.')->items($schema->string()),
+                    'department' => $schema->string()->description('Department abbreviation.'),
+                    'code' => $schema->string()->description('Subject code within the department.'),
+                    'year' => $schema->string()->description('Academic year, as its starting year.'),
+                    'name' => $schema->string()->description('Subject name.'),
+                    'has_teaching' => $nullableBool()->description('Whether the subject has teaching this year, or null.'),
+                    'taught_in_winter' => $nullableBool()->description('Taught in the winter semester, or null.'),
+                    'taught_in_summer' => $nullableBool()->description('Taught in the summer semester, or null.'),
+                    'offered_to_incoming' => $nullableBool()->description('Offered to incoming exchange (ECTS) students, or null.'),
+                    'languages' => $schema->array()->description('Languages of instruction, as STAG codes, e.g. "CZ", "AN".')->items($schema->string()),
                 ])),
         ];
     }
@@ -83,24 +88,32 @@ class SearchSubjectsTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
-            'nazev' => ['string', 'nullable'],
-            'katedra' => ['string', 'nullable'],
-            'zkratka' => ['string', 'nullable'],
-            'fakulta' => ['string', 'nullable'],
-            'rok' => ['string', 'nullable'],
-            'lang' => ['string', 'nullable'],
+            'name' => ['string', 'nullable'],
+            'department' => ['string', 'nullable'],
+            'code' => ['string', 'nullable'],
+            'faculty' => ['string', 'nullable'],
+            'year' => ['integer', 'min:1990', 'max:2100', 'nullable'],
+            'language' => ['string', Rule::in(['cs', 'en']), 'nullable'],
             ...$this->paginationRules(),
+        ], [
+            'name' => 'name must be text to look for in the subject name.',
+            'department' => 'department must be a department abbreviation or part of one, e.g. "KIV".',
+            'code' => 'code must be a subject code or part of one, e.g. "UPA".',
+            'faculty' => 'faculty must be a faculty code, e.g. "FAV".',
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
+            'language' => 'language must be "cs" or "en".',
+            ...$this->paginationMessages(),
         ]);
 
         $params = array_filter([
-            'fakulta' => $validated['fakulta'] ?? null,
-            'rok' => $validated['rok'] ?? null,
-            'lang' => $validated['lang'] ?? null,
+            'fakulta' => $validated['faculty'] ?? null,
+            'rok' => isset($validated['year']) ? (string) $validated['year'] : null,
+            'lang' => $validated['language'] ?? null,
         ], fn ($value) => $value !== null);
 
         // getPredmetyByFakulta has no exact-match filters of its own beyond
-        // fakulta/rok/lang — everything the caller can search by (nazev,
-        // katedra, zkratka) is matched client-side below. Unfiltered this is
+        // fakulta/rok/lang, so everything else the caller can search by (name,
+        // department, code) is matched client-side below. Unfiltered this is
         // STAG's whole subject catalog (~10k rows, ~3MB, sub-second to fetch
         // and negligible to filter), so leaving every filter out just pages
         // through all of it rather than erroring like najdiPredmety used to.
@@ -119,19 +132,19 @@ class SearchSubjectsTool extends Tool
 
     /**
      * @param  array<string, mixed>  $row
-     * @param  array{nazev?: string, katedra?: string, zkratka?: string}  $filters
+     * @param  array{name?: string, department?: string, code?: string}  $filters
      */
     private function matchesFilters(array $row, array $filters): bool
     {
-        if (isset($filters['nazev']) && ! $this->containsSubstring($row['nazev'] ?? null, $filters['nazev'])) {
+        if (isset($filters['name']) && ! $this->containsSubstring($row['nazev'] ?? null, $filters['name'])) {
             return false;
         }
 
-        if (isset($filters['katedra']) && ! $this->containsSubstring($row['katedra'] ?? null, $filters['katedra'])) {
+        if (isset($filters['department']) && ! $this->containsSubstring($row['katedra'] ?? null, $filters['department'])) {
             return false;
         }
 
-        if (isset($filters['zkratka']) && ! $this->containsSubstring($row['zkratka'] ?? null, $filters['zkratka'])) {
+        if (isset($filters['code']) && ! $this->containsSubstring($row['zkratka'] ?? null, $filters['code'])) {
             return false;
         }
 
@@ -155,15 +168,15 @@ class SearchSubjectsTool extends Tool
     private function toSubject(array $row): array
     {
         return [
-            'katedra' => $row['katedra'],
-            'zkratka' => $row['zkratka'],
-            'rok' => $row['rok'],
-            'nazev' => $row['nazev'],
-            'ma_vyuku' => $this->fromStagBool($row['maVyuku'] ?? null),
-            'vyuka_zs' => $this->fromStagBool($row['vyukaZS'] ?? null),
-            'vyuka_ls' => $this->fromStagBool($row['vyukaLS'] ?? null),
-            'nabizi_prijezdy_ects' => $this->fromStagBool($row['nabizetPrijezdyEcts'] ?? null),
-            'jazyky' => array_values(array_filter([
+            'department' => $row['katedra'],
+            'code' => $row['zkratka'],
+            'year' => $row['rok'],
+            'name' => $row['nazev'],
+            'has_teaching' => $this->fromStagBool($row['maVyuku'] ?? null),
+            'taught_in_winter' => $this->fromStagBool($row['vyukaZS'] ?? null),
+            'taught_in_summer' => $this->fromStagBool($row['vyukaLS'] ?? null),
+            'offered_to_incoming' => $this->fromStagBool($row['nabizetPrijezdyEcts'] ?? null),
+            'languages' => array_values(array_filter([
                 $row['jazyk1'] ?? null,
                 $row['jazyk2'] ?? null,
                 $row['jazyk3'] ?? null,
