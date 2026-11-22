@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetKalendarTool;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -643,4 +644,59 @@ it('names days in the pagination descriptions', function () {
         ->and($input['offset']->toArray()['description'])->toContain('days')
         ->and($output['total']->toArray()['description'])->toContain('days')
         ->and($output['count']->toArray()['description'])->toContain('days');
+});
+
+it('caches the academic calendar but never the timetable', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => stagKalendarWeek46()]),
+    ]);
+    $user = User::factory()->withStagToken()->create();
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)
+        ->assertOk()
+        ->assertSee("Rector's day")
+        ->assertSee('"using_outdated_data":false');
+
+    expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku')))->toHaveCount(1)
+        ->and(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getRozvrhByStudent')))->toHaveCount(2);
+});
+
+it('keeps the calendar annotations and flags them when STAG fails after expiry', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::sequence()
+            ->push(['kalendarItem' => stagKalendarWeek46()])
+            ->push('Service Unavailable', 503),
+    ]);
+    $user = User::factory()->withStagToken()->create(['stag_token_valid_until' => now()->addYear()]);
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+    $this->travel(ReferenceData::CALENDAR_TTL_SECONDS + 1)->seconds();
+
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee("Rector's day")
+        ->assertSee('"using_outdated_data":true');
+});
+
+it('does not keep an empty calendar year', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => []]),
+    ]);
+    $user = User::factory()->withStagToken()->create();
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+
+    expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku')))->toHaveCount(2);
 });
