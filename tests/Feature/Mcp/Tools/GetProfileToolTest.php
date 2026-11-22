@@ -156,11 +156,11 @@ it('returns the name and the study detail behind a student ticket', function () 
         ->tool(GetProfileTool::class)
         ->assertOk()
         ->assertSee('"full":"Michal ŠKOULA"')
-        ->assertSee('"os_cislo":"A25B0093P"')
+        ->assertSee('"student_id":"A25B0093P"')
         ->assertSee('"state":"studying"')
         ->assertSee('"form":"full-time"')
         ->assertSee('"type":"bachelor"')
-        ->assertSee('"rocnik":"2"')
+        ->assertSee('"year_of_study":"2"')
         ->assertSee('"name":"Softwarové inženýrství"')
         ->assertSee('"teacher":null');
 });
@@ -225,13 +225,31 @@ it('describes both halves of a dual-role account', function () {
         ->tool(GetProfileTool::class)
         ->assertOk()
         ->assertSee('"full":"JUDr. Miroslav Chupáč"')
-        ->assertSee('"ucit_idno":283755')
-        ->assertSee('"platnost":true')
-        ->assertSee('"phd_skolitel":false')
+        ->assertSee('"teacher_id":283755')
+        ->assertSee('"active":true')
+        ->assertSee('"phd_supervisor":false')
         ->assertSee('"type":"doctoral"');
 
     Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getUcitelInfo')
         && (string) $request['ucitIdno'] === '283755');
+});
+
+it('gathers the teacher\'s phones into a list and the office into one object', function () {
+    Http::fake([
+        STAG_USER_LIST_V2 => Http::response(whoAmIUserList([whoAmITeacherRole()])),
+        STAG_GET_UCITEL_INFO => Http::response(whoAmIUcitelInfo([
+            'telefon' => '377631234',
+            'telefon2' => '1234',
+            'zkrBudovy' => 'UC',
+            'cisloMistnosti' => '336',
+        ])),
+    ]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetProfileTool::class)
+        ->assertOk()
+        ->assertSee('"phones":["377631234","1234"]')
+        ->assertSee('"office":{"building":"UC","room":"336"}');
 });
 
 it('keeps the role row when the teacher detail comes back empty', function () {
@@ -244,7 +262,7 @@ it('keeps the role row when the teacher detail comes back empty', function () {
         ->tool(GetProfileTool::class)
         ->assertOk()
         ->assertSee('"role":"VY"')
-        ->assertSee('"katedra":"KPO"')
+        ->assertSee('"department":"KPO"')
         ->assertSee('"teacher":null');
 });
 
@@ -258,7 +276,7 @@ it('keeps the role row when the detail call is refused', function () {
         ->tool(GetProfileTool::class)
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"os_cislo":"A25B0093P"')
+        ->assertSee('"student_id":"A25B0093P"')
         ->assertSee('"student":null');
 });
 
