@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\OnboardingSuggestionController;
 use App\Http\Controllers\StagAuthorizationController;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -29,6 +30,13 @@ Route::middleware('auth')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::get('stag/authorize', [StagAuthorizationController::class, 'authorize'])->name('stag.authorize');
     Route::post('stag/revoke', [StagAuthorizationController::class, 'revoke'])->name('stag.revoke');
+});
+
+// Onboarding
+Route::middleware('auth')->prefix('onboarding/suggestions')->name('onboarding.suggestions.')->group(function (): void {
+    Route::get('/', [OnboardingSuggestionController::class, 'show'])->name('show');
+    Route::put('/', [OnboardingSuggestionController::class, 'update'])->name('update');
+    Route::post('refresh', [OnboardingSuggestionController::class, 'refresh'])->name('refresh');
 });
 
 Route::get('dump', function (Request $request, Response $response) {
