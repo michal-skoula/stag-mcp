@@ -105,9 +105,9 @@ class GetKalendarTool extends Tool
                                 'room' => $nullableString()->description('Room number, or null.'),
                             ]),
                             'teachers' => $schema->array()
-                                ->description('Teachers on this occurrence.')
+                                ->description('Teachers on this occurrence. Pass teacher_id to get-ucitel-info for contact details and what they teach.')
                                 ->items($schema->object([
-                                    'ucit_idno' => $nullableInt()->description('Teacher id, or null.'),
+                                    'teacher_id' => $nullableInt()->description('Teacher id (ucitIdno), or null.'),
                                     'name' => $nullableString()->description('Teacher name with titles, or null.'),
                                 ])),
                             'week' => $nullableString()->description('Which weeks this occurrence runs on: "odd", "even", "every", or "other".'),
@@ -301,7 +301,7 @@ class GetKalendarTool extends Tool
 
     /**
      * @param  array<string, mixed>  $row
-     * @return list<array{ucit_idno: ?int, name: ?string}>
+     * @return list<array{teacher_id: ?int, name: ?string}>
      */
     private function toTeachers(array $row): array
     {
@@ -309,7 +309,7 @@ class GetKalendarTool extends Tool
         $names = $this->extractQuotedNames($row['vsichniUciteleJmenaTitulySPodily'] ?? null);
 
         return array_map(
-            fn (?int $id, ?string $name) => ['ucit_idno' => $id, 'name' => $name],
+            fn (?int $id, ?string $name) => ['teacher_id' => $id, 'name' => $name],
             $ids,
             $names,
         );
