@@ -17,6 +17,16 @@ interface StagClient
     public function get(string $path, array $query = []): array;
 
     /**
+     * Performs a GET request against a STAG endpoint that answers `text/plain`,
+     * returning the body as-is.
+     *
+     * @param  array<string, mixed>  $query  Request's query string (&key=val)
+     *
+     * @throws StagException
+     */
+    public function getText(string $path, array $query = []): string;
+
+    /**
      * Performs a POST request against a STAG endpoint.
      *
      * @param  array<string, mixed>  $data  Request's JSON body

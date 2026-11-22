@@ -74,3 +74,20 @@ it('returns an empty array when STAG sends no body', function () {
 
     expect($result)->toBe([]);
 });
+
+it('returns a text/plain body verbatim and asks for text', function () {
+    Http::fake([ANY_STAG => Http::response('OK', 200, ['Content-Type' => 'text/plain'])]);
+
+    $body = (new StagHttpClient(User::factory()->withStagToken()->create()))
+        ->getText('ciselniky/getCiselnik');
+
+    expect($body)->toBe('OK');
+    Http::assertSent(fn ($request) => $request->hasHeader('Accept', 'text/plain'));
+});
+
+it('translates failures on a text call like any other', function () {
+    Http::fake([ANY_STAG => Http::response('Forbidden', 403)]);
+
+    expect(fn () => (new StagHttpClient(User::factory()->withStagToken()->create()))->getText('ciselniky/getCiselnik'))
+        ->toThrow(StagException::class, 'refused the requested role');
+});
