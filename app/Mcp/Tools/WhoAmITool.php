@@ -9,6 +9,7 @@ use App\Mcp\Concerns\ResolvesStagIdentity;
 use App\Mcp\Enums\StudyForm;
 use App\Mcp\Enums\StudyProgrammeType;
 use App\Mcp\Enums\StudyState;
+use App\Services\Observability\StagErrorReporter;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Laravel\Mcp\Request;
@@ -255,7 +256,9 @@ class WhoAmITool extends Tool
     {
         try {
             $info = $stag->get($path, $query);
-        } catch (StagException) {
+        } catch (StagException $e) {
+            app(StagErrorReporter::class)->degraded($e, 'who-am-i role detail');
+
             return null;
         }
 

@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\RequiresStagLogin;
+use App\Services\Observability\StagErrorReporter;
 use App\Services\Teachers\BusinessCard;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
@@ -222,7 +223,9 @@ class GetUcitelInfoTool extends Tool
     {
         try {
             $rows = $stag->get('ucitel/getGarant_ProgramOborByUcitIdno', ['ucitIdno' => $teacherId]);
-        } catch (StagException) {
+        } catch (StagException $e) {
+            app(StagErrorReporter::class)->degraded($e, 'teacher guarantees');
+
             return null;
         }
 

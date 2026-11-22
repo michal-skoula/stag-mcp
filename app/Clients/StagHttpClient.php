@@ -3,6 +3,7 @@
 namespace App\Clients;
 
 use App\Contracts\StagClient;
+use App\Events\StagRequestCompleted;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -10,6 +11,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -22,14 +24,14 @@ use Illuminate\Support\Facades\Http;
  *
  * @see https://is-stag.zcu.cz/napoveda/web-services/ws_prihlasovani.html
  */
-readonly final class StagHttpClient implements StagClient
+final readonly class StagHttpClient implements StagClient
 {
     /** @var string Base URL for all STAG endpoints. */
     private const string BASE_URL = 'https://stag-ws.zcu.cz/ws/services/rest2';
 
     /**
-     * @param User $user MCP Client user
-     * @param bool $showRealExceptions Make endpoints return real STAG errors instead of abstracted error messages
+     * @param  User  $user  MCP Client user
+     * @param  bool  $showRealExceptions  Make endpoints return real STAG errors instead of abstracted error messages
      */
     public function __construct(private User $user, private bool $showRealExceptions = false) {}
 
@@ -41,7 +43,7 @@ readonly final class StagHttpClient implements StagClient
      */
     public function get(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
+        return $this->send('GET', $path, fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
     }
 
     /**
@@ -52,7 +54,7 @@ readonly final class StagHttpClient implements StagClient
      */
     public function post(string $path, array $data = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r->post($path, $this->withDefaults($data)));
+        return $this->send('POST', $path, fn (PendingRequest $r) => $r->post($path, $this->withDefaults($data)));
     }
 
     /**
@@ -63,7 +65,7 @@ readonly final class StagHttpClient implements StagClient
      */
     public function put(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r
+        return $this->send('PUT', $path, fn (PendingRequest $r) => $r
             ->withOptions(['query' => $this->toQueryString($this->withDefaults($query))])
             ->put($path));
     }
@@ -75,29 +77,53 @@ readonly final class StagHttpClient implements StagClient
      * A 401 means different things depending on whether a token was sent at all,
      * and the two need different instructions back to the user.
      *
+     * Every call fires a StagRequestCompleted event with the endpoint, status and
+     * duration. The query string and body are never part of it.
+     *
      * @param  callable(PendingRequest): Response  $call
      * @return array<array-key, mixed>
      *
      * @throws StagException
      */
-    private function send(callable $call): array
+    private function send(string $method, string $path, callable $call): array
     {
+        $started = hrtime(true);
+        $status = null;
+        $successful = false;
+
         try {
-            return $call($this->request())->throw()->json() ?? [];
+            $response = $call($this->request());
+            $status = $response->status();
+            $body = $response->throw()->json() ?? [];
+            $successful = true;
+
+            return $body;
         } catch (ConnectionException $e) {
-            throw StagException::unreachable($e);
+            throw StagException::unreachable($e)->at($path, null);
         } catch (RequestException $e) {
-            if($this->showRealExceptions) {
-                throw new StagException('['.$e->response->status().']: '.$e->getMessage(), previous: $e);
-            } else {
-                throw match ($e->response->status()) {
-                    401 => $this->hasStagToken()
-                        ? StagException::ticketRejected()
-                        : StagException::notAuthorized(),
-                    403 => StagException::roleRejected(),
-                    default => StagException::requestFailed($e->response->status(), $e),
-                };
+            $status = $e->response->status();
+
+            if ($this->showRealExceptions) {
+                throw (new StagException('['.$status.']: '.$e->getMessage(), previous: $e))->at($path, $status);
             }
+
+            throw (match ($status) {
+                401 => $this->hasStagToken()
+                    ? StagException::ticketRejected()
+                    : StagException::notAuthorized(),
+                403 => StagException::roleRejected(),
+                default => StagException::requestFailed($status, $e),
+            })->at($path, $status);
+        } finally {
+            event(new StagRequestCompleted(
+                $method,
+                $path,
+                $status,
+                round((hrtime(true) - $started) / 1e6, 1),
+                $successful,
+                $this->user->id,
+                Context::get('mcp_tool'),
+            ));
         }
     }
 
@@ -137,7 +163,7 @@ readonly final class StagHttpClient implements StagClient
     private function request(): PendingRequest
     {
         // Normalizing to always include a trailing slash
-        $baseUrl = rtrim(self::BASE_URL, '/') . '/';
+        $baseUrl = rtrim(self::BASE_URL, '/').'/';
 
         $r = Http::baseUrl($baseUrl)->acceptJson();
 

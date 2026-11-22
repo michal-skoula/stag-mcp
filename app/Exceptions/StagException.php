@@ -11,6 +11,23 @@ use Throwable;
  */
 class StagException extends Exception
 {
+    /** Endpoint path the failed call went to, set by the client. Never the query string. */
+    public ?string $endpoint = null;
+
+    /** HTTP status STAG answered with, or null when it never answered. */
+    public ?int $status = null;
+
+    /**
+     * Records which call failed, so a reporter can say more than the message does.
+     */
+    public function at(string $endpoint, ?int $status): static
+    {
+        $this->endpoint = $endpoint;
+        $this->status = $status;
+
+        return $this;
+    }
+
     public static function notAuthorized(): self
     {
         return new self(
