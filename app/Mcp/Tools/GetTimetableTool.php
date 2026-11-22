@@ -5,11 +5,14 @@ namespace App\Mcp\Tools;
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\PaginatesResponses;
+use App\Mcp\Concerns\ReportsDataFreshness;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Mcp\Concerns\ResolvesStagIdentity;
 use App\Mcp\Enums\CalendarPeriod;
 use App\Mcp\Enums\Weekday;
 use App\Mcp\Enums\WeekType;
+use App\Services\Stag\CachedStagData;
+use App\Services\Stag\ReferenceData;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Carbon;
@@ -24,11 +27,12 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-timetable')]
 #[Title('Get timetable')]
-#[Description("The caller's timetable (rozvrh) over a date range: every class, seminar, exam and zápočet with subject, time, room and teachers, and per day the odd/even week, the period and whether it is a teaching day. Call it for \"what do I have tomorrow\", \"where is my next lecture\" or \"am I free on Friday\". Takes no arguments for the next two weeks; date_from and date_to set another range, up to 400 days. STAG leaves out occurrences that do not happen (holidays, rector's days, cancellations) instead of marking them, so a day with no events means nothing is on, not that the lookup failed.")]
+#[Description("The caller's timetable (rozvrh) over a date range: every class, seminar, exam and zápočet with subject, time, room and teachers, and per day the odd/even week, the period and whether it is a teaching day. Call it for \"what do I have tomorrow\", \"where is my next lecture\" or \"am I free on Friday\". Takes no arguments for the next two weeks; date_from and date_to set another range, up to 400 days. STAG leaves out occurrences that do not happen (holidays, rector's days, cancellations) instead of marking them, so a day with no events means nothing is on, not that the lookup failed. The odd/even week and period annotations come from a cached academic calendar; if using_outdated_data is true, STAG could not be reached for a fresh copy of it (the timetable itself is always live), so say those annotations may be out of date.")]
 #[IsReadOnly]
 class GetTimetableTool extends Tool
 {
     use PaginatesResponses;
+    use ReportsDataFreshness;
     use RequiresStagLogin;
     use ResolvesStagIdentity;
 
@@ -70,6 +74,7 @@ class GetTimetableTool extends Tool
             'date_from' => $schema->string()->description('First date of the range, ISO.'),
             'date_to' => $schema->string()->description('Last date of the range, ISO.'),
             ...$this->paginationOutputSchema($schema, 'days'),
+            ...$this->freshnessOutputSchema($schema),
             'days' => $schema->array()
                 ->description('Matching days, ascending.')
                 ->items($schema->object([
@@ -105,7 +110,7 @@ class GetTimetableTool extends Tool
                                 'room' => $nullableString()->description('Room number, or null.'),
                             ]),
                             'teachers' => $schema->array()
-                                ->description('Teachers on this occurrence.')
+                                ->description('Teachers on this occurrence. Pass teacher_id to get-teacher for contact details and what they teach.')
                                 ->items($schema->object([
                                     'teacher_id' => $nullableInt()->description('Teacher id (ucitIdno), or null.'),
                                     'name' => $nullableString()->description('Teacher name with titles, or null.'),
@@ -176,7 +181,8 @@ class GetTimetableTool extends Tool
             }
         }
 
-        $kalendarByDate = $this->fetchKalendarRange($stag, $dateFrom, $dateTo);
+        $calendars = $this->fetchKalendarRange($stag, $dateFrom, $dateTo);
+        $kalendarByDate = $this->indexByDate($calendars);
         $includeEmptyDays = $validated['include_empty_days'] ?? false;
 
         $days = [];
@@ -196,28 +202,38 @@ class GetTimetableTool extends Tool
             'date_from' => $dateFrom->toDateString(),
             'date_to' => $dateTo->toDateString(),
             ...$this->paginate($days, $validated, 'days'),
+            ...$this->freshness(...$calendars),
         ]);
     }
 
     /**
      * getKalendarRoku is fetched per academic year (1.9-31.8) the range touches,
-     * then filtered to the range client-side, since it does not take a date-range
-     * parameter of its own.
+     * through the shared reference cache: it is the same for every user, unlike
+     * the timetable. It does not take a date-range parameter, so the range is
+     * applied client-side by the caller.
      *
-     * @return array<string, array<string, mixed>> ISO date => kalendarItem row
+     * @return list<CachedStagData<list<array<string, mixed>>>>
      *
      * @throws StagException
      */
     private function fetchKalendarRange(StagClient $stag, Carbon $from, Carbon $to): array
     {
         $years = array_unique([$this->academicYearFor($from), $this->academicYearFor($to)]);
+        $referenceData = new ReferenceData($stag);
 
+        return array_map(fn (int $year) => $referenceData->calendar((string) $year), array_values($years));
+    }
+
+    /**
+     * @param  list<CachedStagData<list<array<string, mixed>>>>  $calendars
+     * @return array<string, array<string, mixed>> ISO date => kalendarItem row
+     */
+    private function indexByDate(array $calendars): array
+    {
         $byDate = [];
 
-        foreach ($years as $year) {
-            $rows = $stag->get('kalendar/getKalendarRoku', ['rok' => (string) $year]);
-
-            foreach ($rows['kalendarItem'] ?? [] as $row) {
+        foreach ($calendars as $calendar) {
+            foreach ($calendar->data as $row) {
                 $iso = $this->toIsoDate($row['datum']['value'] ?? null);
 
                 if ($iso !== null) {

@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetTimetableTool;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -399,6 +400,27 @@ it('maps exam occurrences to kind exam', function () {
         ->assertSee('"department":"KIV","code":"DB1"');
 });
 
+it('hands over the teacher_id of an exam, which has no roakIdno, without extra STAG calls', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => [stagRozvrhAkceExam(), stagRozvrhAkce(['datum' => ['value' => '19.1.2026']])]]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => [
+            stagKalendarItem('19.1.2026', 'Po', 'ZZ', 'J', 4),
+        ]]),
+    ]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
+        ->assertOk()
+        ->assertSee('"teachers":[{"teacher_id":17895,"name":"Ing. Martin Zíma, Ph.D."}]')
+        ->assertSee('"teacher_id":241911')
+        ->assertDontSee('ucit_idno');
+
+    /* Identity, the timetable and the calendar. The timetable rows already name their teachers, so no per-event lookup. */
+    Http::assertSentCount(3);
+    Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getUciteleRoakce'));
+});
+
 it('splits a multi-teacher list without breaking on a comma inside a title', function () {
     Http::fake([
         STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
@@ -632,4 +654,59 @@ it('names the argument and the format it accepts when a date is malformed', func
         ->assertHasErrors(['date_from must be a date as YYYY-MM-DD, e.g. 2026-11-09.']);
 
     Http::assertNothingSent();
+});
+
+it('caches the academic calendar but never the timetable', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => stagKalendarWeek46()]),
+    ]);
+    $user = User::factory()->withStagToken()->create();
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)
+        ->assertOk()
+        ->assertSee("Rector's day")
+        ->assertSee('"using_outdated_data":false');
+
+    expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku')))->toHaveCount(1)
+        ->and(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getRozvrhByStudent')))->toHaveCount(2);
+});
+
+it('keeps the calendar annotations and flags them when STAG fails after expiry', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::sequence()
+            ->push(['kalendarItem' => stagKalendarWeek46()])
+            ->push('Service Unavailable', 503),
+    ]);
+    $user = User::factory()->withStagToken()->create(['stag_token_valid_until' => now()->addYear()]);
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+    $this->travel(ReferenceData::CALENDAR_TTL_SECONDS + 1)->seconds();
+
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee("Rector's day")
+        ->assertSee('"using_outdated_data":true');
+});
+
+it('does not keep an empty calendar year', function () {
+    Http::fake([
+        STAG_GET_STAG_USER_LIST => Http::response(stagUserList()),
+        STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
+        STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => []]),
+    ]);
+    $user = User::factory()->withStagToken()->create();
+    $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
+
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+
+    expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku')))->toHaveCount(2);
 });

@@ -5,6 +5,7 @@ namespace App\Mcp\Tools;
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
 use App\Mcp\Concerns\PaginatesResponses;
+use App\Mcp\Concerns\ReportsDataFreshness;
 use App\Mcp\Concerns\RequiresStagLogin;
 use App\Services\Teachers\TeacherDirectory;
 use App\Services\Teachers\TeacherSearch;
@@ -19,13 +20,14 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('search-teachers')]
-#[Title('Search teachers')]
-#[Description('Finds teachers and other university staff (učitelé) by name, department or both, and returns each person\'s teacher_id, name with titles, department, email and whether STAG flags them active or an employee. Call it whenever the user names a person ("Herout", "my lab teacher Šperlová") or asks who works in a department. Needs name or department; name matching ignores case, accents and word order. Pass a teacher_id to get-teacher for office, phone and what they teach. Inactive people are returned on purpose: STAG flags student demonstrators and doctoral assistants inactive while they run labs. Best matches first, paged with count and offset.')]
+#[Name('search-teachers The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
+#[Title('Search teachers The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
+#[Description('Finds teachers and other university staff (učitelé) by name, department or both, and returns each person\'s teacher_id, name with titles, department, email and whether STAG flags them active or an employee. Call it whenever the user names a person ("Herout", "my lab teacher Šperlová") or asks who works in a department. Needs name or department; name matching ignores case, accents and word order. Pass a teacher_id to get-teacher for office, phone and what they teach. Inactive people are returned on purpose: STAG flags student demonstrators and doctoral assistants inactive while they run labs. Best matches first, paged with count and offset. The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
 #[IsReadOnly]
 class SearchTeachersTool extends Tool
 {
     use PaginatesResponses;
+    use ReportsDataFreshness;
     use RequiresStagLogin;
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fucitel
@@ -59,6 +61,7 @@ class SearchTeachersTool extends Tool
 
         return [
             ...$this->paginationOutputSchema($schema, 'teachers'),
+            ...$this->freshnessOutputSchema($schema),
             'teachers' => $schema->array()
                 ->description('Matching people, best match first: whole-surname matches, then surname prefixes, then anything else, with active people ahead of inactive ones within each group.')
                 ->items($schema->object([
@@ -109,16 +112,17 @@ class SearchTeachersTool extends Tool
 
         $department = isset($validated['department']) ? mb_strtoupper($validated['department']) : null;
 
-        $teachers = (new TeacherDirectory($stag))->search(
+        $result = (new TeacherDirectory($stag))->search(
             $name,
             $department,
             (bool) ($validated['active_only'] ?? false),
             (bool) ($validated['employees_only'] ?? false),
         );
 
-        return Response::structured(
-            $this->paginate($teachers, $validated, 'teachers', $this->toTeacher(...)),
-        );
+        return Response::structured([
+            ...$this->paginate($result->data, $validated, 'teachers', $this->toTeacher(...)),
+            ...$this->freshness($result),
+        ]);
     }
 
     protected function paginationDefault(): int

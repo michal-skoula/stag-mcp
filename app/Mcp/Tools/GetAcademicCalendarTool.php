@@ -4,8 +4,10 @@ namespace App\Mcp\Tools;
 
 use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
+use App\Mcp\Concerns\ReportsDataFreshness;
 use App\Mcp\Enums\CalendarPeriod;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
@@ -21,10 +23,12 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-academic-calendar')]
 #[Title('Get academic calendar')]
-#[Description("The academic year's schedule (harmonogram): when each semester, teaching period and exam period starts and ends, teaching-free days, and which period STAG considers current. Call it for \"when does the exam period start\", \"when is the last teaching day\" or \"is it the winter semester yet\". year defaults to the current academic year. For the caller's own classes on given dates, use get-timetable.")]
+#[Description("The academic year's schedule (harmonogram): when each semester, teaching period and exam period starts and ends, teaching-free days, and which period STAG considers current. Call it for \"when does the exam period start\", \"when is the last teaching day\" or \"is it the winter semester yet\". year defaults to the current academic year. For the caller's own classes on given dates, use get-timetable. The harmonogram is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy of it, so say it may be out of date.")]
 #[IsReadOnly]
 class GetAcademicCalendarTool extends Tool
 {
+    use ReportsDataFreshness;
+
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fkalendar
 
     /**
@@ -55,6 +59,7 @@ class GetAcademicCalendarTool extends Tool
         ])->description($description);
 
         return [
+            ...$this->freshnessOutputSchema($schema),
             'current' => $schema->object([
                 'period' => $period('The period STAG considers current right now.'),
                 'academic_year' => $schema->string()->description('The academic year STAG considers current right now.'),
@@ -93,17 +98,24 @@ class GetAcademicCalendarTool extends Tool
             // fetched once and not affected by the 'year' filter below.
             $obdobi = $stag->get('kalendar/getAktualniObdobiInfo');
 
-            $params = array_filter(['rok' => isset($validated['year']) ? (string) $validated['year'] : null], fn ($value) => $value !== null);
-            $harmonogram = $stag->get('kalendar/getHarmonogramRoku', $params);
+            /*
+             * The year is resolved here and always sent, so the cache never
+             * holds "the current year" under a key that outlives 1 September.
+             * The harmonogram is the cached half; getAktualniObdobiInfo is not,
+             * since it answers "right now".
+             */
+            $year = isset($validated['year']) ? (string) $validated['year'] : ($obdobi['akademRok'] ?? $this->currentAcademicYear());
+            $harmonogram = (new ReferenceData($stag))->harmonogram($year);
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }
 
-        $entries = $this->toEntries($harmonogram['harmonogramItem'] ?? [], $obdobi);
+        $entries = $this->toEntries($harmonogram->data, $obdobi);
 
         usort($entries, fn (array $a, array $b) => $a['date_from'] <=> $b['date_from']);
 
         return Response::structured([
+            ...$this->freshness($harmonogram),
             'current' => [
                 'period' => $this->toPeriod($obdobi['obdobi'] ?? null),
                 'academic_year' => $obdobi['akademRokInteligentne'] ?? null,
@@ -172,6 +184,17 @@ class GetAcademicCalendarTool extends Tool
         }
 
         return $entries;
+    }
+
+    /**
+     * Fallback for when getAktualniObdobiInfo omits `akademRok`: academic
+     * years start on 1 September.
+     */
+    private function currentAcademicYear(): string
+    {
+        $today = Carbon::today();
+
+        return (string) ($today->month >= 9 ? $today->year : $today->year - 1);
     }
 
     private function toIsoDate(?string $value): ?string

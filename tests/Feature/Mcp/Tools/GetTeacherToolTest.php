@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 const STAG_UCITEL_INFO = 'stag-ws.zcu.cz/ws/services/rest2/ucitel/getUcitelInfo*';
 const STAG_UCITEL_VIZITKA = 'stag-ws.zcu.cz/ws/services/rest2/vizitka/getVizitkaByUcitidno*';
 const STAG_UCITEL_GARANT = 'stag-ws.zcu.cz/ws/services/rest2/ucitel/getGarant_ProgramOborByUcitIdno*';
+const STAG_UCITEL_PREDMETY = 'stag-ws.zcu.cz/ws/services/rest2/predmety/getPredmetyByUcitel*';
 
 /**
  * Shaped as `ucitel/getUcitelInfo` returned it for ucitIdno 17098 on 17 Oct 2026.
@@ -93,12 +94,37 @@ function ucitelGaranti(): array
     ];
 }
 
-function fakeUcitel(array $info = [], mixed $vizitka = null, mixed $garanti = null): void
+/**
+ * Shaped as `predmety/getPredmetyByUcitel` returned it on 22 Nov 2026. A pure
+ * instructor still carries `prednasejiciPodil: 100`, and a role the person does
+ * not hold can have a null share.
+ *
+ * @return array{predmetUcitele: list<array<string, mixed>>}
+ */
+function ucitelPredmety(): array
+{
+    $row = fn (array $overrides) => array_merge([
+        'katedra' => 'KIV', 'rok' => '2026',
+        'garant' => 'NE', 'garantPodil' => null,
+        'prednasejici' => 'NE', 'prednasejiciPodil' => 100,
+        'cvicici' => 'NE', 'cviciciPodil' => 100,
+        'seminarici' => 'NE', 'seminariciPodil' => 100,
+        'examinator' => 'NE',
+    ], $overrides);
+
+    return ['predmetUcitele' => [
+        $row(['zkratka' => 'OKS', 'nazev' => 'Odborná komunikace a styl', 'garant' => 'ANO', 'garantPodil' => 100, 'cvicici' => 'ANO', 'cviciciPodil' => 60, 'examinator' => 'ANO']),
+        $row(['zkratka' => 'PC', 'nazev' => 'Programování v jazyce C', 'cvicici' => 'ANO']),
+    ]];
+}
+
+function fakeUcitel(array $info = [], mixed $vizitka = null, mixed $garanti = null, mixed $predmety = null): void
 {
     Http::fake([
         STAG_UCITEL_INFO => Http::response(ucitelInfo($info)),
         STAG_UCITEL_VIZITKA => $vizitka ?? Http::response(ucitelVizitka()),
         STAG_UCITEL_GARANT => $garanti ?? Http::response(ucitelGaranti()),
+        STAG_UCITEL_PREDMETY => $predmety ?? Http::response(ucitelPredmety()),
     ]);
 }
 
@@ -185,6 +211,7 @@ it('answers for a student teacher, who has no business card', function () {
             'pracovisteDalsi' => 'KIV', 'email' => 'sperld@fav.zcu.cz', 'zkrBudovy' => null, 'cisloMistnosti' => null],
         vizitka: Http::response([]),
         garanti: Http::response([]),
+        predmety: Http::response(['predmetUcitele' => [ucitelPredmety()['predmetUcitele'][1]]]),
     );
 
     getUcitel(['teacher_id' => 301402])
@@ -195,7 +222,8 @@ it('answers for a student teacher, who has no business card', function () {
         ->assertSee('"offices":[]')
         ->assertSee('"website":null')
         ->assertSee('"card_updated":null')
-        ->assertSee('"guarantees":[]');
+        ->assertSee('"guarantees":[]')
+        ->assertSee('"katedra":"KIV","zkratka":"PC","nazev":"Programování v jazyce C","roles":[{"role":"instructor","share":100}]');
 });
 
 it('falls back to the room on the teacher record when there is no business card', function () {
@@ -291,4 +319,73 @@ it('drops identifiers and flags nobody asked for', function () {
         ->assertDontSee('stprIdno')
         ->assertDontSee('1821')
         ->assertDontSee('showKontakt');
+});
+
+it('lists the subjects with one role entry per held flag and the share only where it applies', function () {
+    fakeUcitel();
+
+    getUcitel()
+        ->assertOk()
+        ->assertSee('"subjects_year":2026')
+        ->assertSee('"katedra":"KIV","zkratka":"OKS","nazev":"Odborná komunikace a styl","roles":[{"role":"guarantor","share":100},{"role":"instructor","share":60},{"role":"examiner","share":null}]')
+        /* PC's lecturer and seminar shares read 100 in STAG, but the person holds neither role. */
+        ->assertSee('"zkratka":"PC","nazev":"Programování v jazyce C","roles":[{"role":"instructor","share":100}]');
+});
+
+it('leaves rok off the subjects call by default and forwards an explicit year', function () {
+    fakeUcitel();
+
+    getUcitel()->assertOk();
+    Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getPredmetyByUcitel')
+        && (string) $request['ucitIdno'] === '17098'
+        && ! array_key_exists('rok', $request->data()));
+
+    getUcitel(['teacher_id' => 17098, 'year' => 2024])
+        ->assertOk()
+        ->assertSee('"subjects_year":2024');
+    Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getPredmetyByUcitel')
+        && (string) ($request->data()['rok'] ?? '') === '2024');
+});
+
+it('rejects an out-of-range year before calling STAG', function (mixed $year) {
+    Http::fake();
+
+    getUcitel(['teacher_id' => 17098, 'year' => $year])->assertHasErrors();
+
+    Http::assertNothingSent();
+})->with([
+    'too early' => [1800],
+    'too late' => [3000],
+    'not a number' => ['2025/2026'],
+]);
+
+it('reports subjects as empty rather than unknown when the teacher teaches nothing that year', function () {
+    fakeUcitel(predmety: Http::response(['predmetUcitele' => []]));
+
+    getUcitel(['teacher_id' => 17098, 'year' => 2020])
+        ->assertOk()
+        ->assertSee('"subjects_year":2020')
+        ->assertSee('"subjects":[]');
+});
+
+it('reports subjects as unknown rather than none when STAG refuses them', function () {
+    fakeUcitel(predmety: Http::response('Internal Server Error', 500));
+
+    getUcitel()
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee('"email":"herout@fav.zcu.cz"')
+        ->assertSee('"subjects_year":null')
+        ->assertSee('"subjects":null');
+});
+
+it('keeps a subject whose every role flag is off, with no roles', function () {
+    $empty = ['katedra' => 'KIV', 'zkratka' => 'XYZ', 'nazev' => 'Nic', 'rok' => '2026', 'garant' => 'NE', 'garantPodil' => null,
+        'prednasejici' => 'NE', 'prednasejiciPodil' => 100, 'cvicici' => 'NE', 'cviciciPodil' => 100,
+        'seminarici' => 'NE', 'seminariciPodil' => 100, 'examinator' => 'NE'];
+    fakeUcitel(predmety: Http::response(['predmetUcitele' => [$empty]]));
+
+    getUcitel()
+        ->assertOk()
+        ->assertSee('"zkratka":"XYZ","nazev":"Nic","roles":[]');
 });

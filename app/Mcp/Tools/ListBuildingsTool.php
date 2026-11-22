@@ -4,9 +4,11 @@ namespace App\Mcp\Tools;
 
 use App\Clients\StagHttpClient;
 use App\Exceptions\StagException;
+use App\Mcp\Concerns\ReportsDataFreshness;
 use App\Mcp\Enums\City;
 use App\Mcp\Enums\Location;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
@@ -19,12 +21,14 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('list-buildings')]
-#[Title('List buildings')]
-#[Description('University buildings (budovy): abbreviation, campus, street address, coordinates and a directions link. Call it to turn a building code such as "UC" into an address, or to see what is on a campus. Every filter is optional, and city defaults to the user\'s saved city; unfiltered there are 80+ buildings, so narrow by city, campus or address where you can.')]
+#[Name('list-buildings The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
+#[Title('List buildings The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
+#[Description('University buildings (budovy): abbreviation, campus, street address, coordinates and a directions link. Call it to turn a building code such as "UC" into an address, or to see what is on a campus. Every filter is optional, and city defaults to the user\'s saved city; unfiltered there are 80+ buildings, so narrow by city, campus or address where you can. The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
 #[IsReadOnly]
 class ListBuildingsTool extends Tool
 {
+    use ReportsDataFreshness;
+
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fmistnost
 
     /**
@@ -59,6 +63,7 @@ class ListBuildingsTool extends Tool
     public function outputSchema(JsonSchema $schema): array
     {
         return [
+            ...$this->freshnessOutputSchema($schema),
             'total' => $schema->integer()
                 ->description('How many buildings were returned.'),
             'buildings' => $schema->array()
@@ -111,19 +116,18 @@ class ListBuildingsTool extends Tool
         }
 
         try {
-            // TODO: this data changes very infrequently. Cache it with a
-            //       long TTL rather than calling STAG on every request.
-            $budovy = (new StagHttpClient($user))->get('mistnost/getBudovy');
+            $budovy = (new ReferenceData(new StagHttpClient($user)))->buildings();
         } catch (StagException $e) {
             return Response::error($e->getMessage());
         }
 
         $items = array_values(array_filter(
-            $budovy['items'] ?? [],
+            $budovy->data,
             fn (array $row) => $this->matchesFilters($row, $filters),
         ));
 
         return Response::structured([
+            ...$this->freshness($budovy),
             'total' => count($items),
             'buildings' => array_map($this->toBuilding(...), $items),
         ]);

@@ -5,14 +5,20 @@ namespace App\Mcp\Servers;
 use App\Mcp\Tools\GetAcademicCalendarTool;
 use App\Mcp\Tools\GetGradesTool;
 use App\Mcp\Tools\GetProfileTool;
+use App\Mcp\Tools\GetProgramInfoTool;
+use App\Mcp\Tools\GetStudijniPlanTool;
+use App\Mcp\Tools\GetStudijniPokrokTool;
 use App\Mcp\Tools\GetStudyAdvisorTool;
 use App\Mcp\Tools\GetSubjectTool;
 use App\Mcp\Tools\GetTeacherTool;
 use App\Mcp\Tools\GetTimetableTool;
 use App\Mcp\Tools\ListBuildingsTool;
+use App\Mcp\Tools\ListCertifikatyTool;
+use App\Mcp\Tools\ListExamDatesTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
+use App\Mcp\Tools\SearchProgramyTool;
 use App\Mcp\Tools\SearchSubjectsTool;
 use App\Mcp\Tools\SearchTeachersTool;
 use Laravel\Mcp\Server;
@@ -37,6 +43,12 @@ class StagMcpServer extends Server
         GetStudyAdvisorTool::class,
         SearchTeachersTool::class,
         GetTeacherTool::class,
+        GetStudijniPlanTool::class,
+        GetStudijniPokrokTool::class,
+        ListCertifikatyTool::class,
+        ListExamDatesTool::class,
+        SearchProgramyTool::class,
+        GetProgramInfoTool::class,
     ];
 
     protected array $resources = [

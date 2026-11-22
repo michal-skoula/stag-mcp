@@ -4,6 +4,7 @@ use App\Mcp\Enums\Location;
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\ListBuildingsTool;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 
@@ -74,14 +75,62 @@ it('nests address and coordinates under their own keys', function () {
         ->assertSee('"coordinates":{"latitude":49.7248378,"longitude":13.3509269}');
 });
 
-it('returns an empty list without erroring', function () {
+it('treats an empty building list as a STAG fault rather than answering with nothing', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => []])]);
 
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class)
+        ->assertHasErrors()
+        ->assertSee('empty building list');
+});
+
+it('returns an empty list when the filters match nothing', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(ListBuildingsTool::class, ['city' => 'Nowhere'])
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0');
+});
+
+it('answers a second call from the cache without calling STAG', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
+    $user = User::factory()->create();
+
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)->assertOk();
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class, ['address' => 'Univerzitní'])
+        ->assertOk()
+        ->assertSee('"code":"UL"')
+        ->assertSee('"using_outdated_data":false')
+        ->assertSee('"retrieved_at"');
+
+    Http::assertSentCount(1);
+});
+
+it('serves the old list and flags it when STAG fails after the cache expired', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::sequence()
+        ->push(['items' => [stagBudova()]])
+        ->push('Service Unavailable', 503),
+    ]);
+    $user = User::factory()->create();
+
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)->assertOk();
+    $this->travel(ReferenceData::BUILDINGS_TTL_SECONDS + 1)->seconds();
+
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee('"code":"UL"')
+        ->assertSee('"using_outdated_data":true');
+});
+
+it('errors when STAG fails and nothing was cached', function () {
+    Http::fake([STAG_GET_BUDOVY => Http::response('Service Unavailable', 503)]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(ListBuildingsTool::class)
+        ->assertHasErrors();
 });
 
 it('filters by city, case-insensitively', function () {

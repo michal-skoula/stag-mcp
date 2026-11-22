@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\SearchTeachersTool;
 use App\Models\User;
+use App\Services\Teachers\TeacherDirectory;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 use Tests\Fixtures\UcitelFixtures;
@@ -193,4 +194,31 @@ it('names teachers in the pagination descriptions', function () {
 
     expect($input['count']->toArray()['description'])->toContain('teachers')
         ->and($output['total']->toArray()['description'])->toContain('teachers');
+});
+
+it('reports the snapshot age and that it is current', function () {
+    UcitelFixtures::fake([UcitelFixtures::ucitel()]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(SearchTeachersTool::class, ['name' => 'sperlova'])
+        ->assertOk()
+        ->assertSee('"using_outdated_data":false')
+        ->assertSee('"retrieved_at"');
+});
+
+it('flags the list as outdated when STAG fails after the cache expired', function () {
+    Http::fake([UcitelFixtures::URL => Http::sequence()
+        ->push(['ucitel' => [UcitelFixtures::ucitel()]])
+        ->push('Service Unavailable', 503),
+    ]);
+    $user = User::factory()->withStagToken()->create(['stag_token_valid_until' => now()->addYear()]);
+
+    StagMcpServer::actingAs($user)->tool(SearchTeachersTool::class, ['name' => 'sperlova'])->assertOk();
+    $this->travel(TeacherDirectory::TEACHER_CACHE_TTL_SECONDS + 1)->seconds();
+
+    StagMcpServer::actingAs($user)->tool(SearchTeachersTool::class, ['name' => 'sperlova'])
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee('"teacher_id":301402')
+        ->assertSee('"using_outdated_data":true');
 });

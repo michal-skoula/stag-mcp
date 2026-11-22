@@ -3,6 +3,7 @@
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetAcademicCalendarTool;
 use App\Models\User;
+use App\Services\Stag\ReferenceData;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\Fluent\AssertableJson;
 
@@ -205,4 +206,74 @@ it('names the argument and what it accepts when the year is not one', function (
         ->assertHasErrors(['year must be an academic year as its starting year, e.g. 2025 for 2025/2026.']);
 
     Http::assertNothingSent();
+});
+
+it('sends the current academic year explicitly when no year is given', function () {
+    Http::fake([
+        STAG_GET_AKTUALNI_OBDOBI_INFO => Http::response(stagObdobi(['akademRok' => '2026'])),
+        STAG_GET_HARMONOGRAM_ROKU => Http::response(['harmonogramItem' => []]),
+    ]);
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetAcademicCalendarTool::class)
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => ! str_contains((string) $request->url(), 'getHarmonogramRoku') || $request['rok'] === '2026');
+});
+
+it('rejects a year that is not four digits without calling STAG', function (string $year) {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetAcademicCalendarTool::class, ['year' => $year])
+        ->assertHasErrors();
+
+    Http::assertNothingSent();
+})->with(['letters' => ['abcd'], 'academic-year range' => ['2026/2027'], 'two digits' => ['26']]);
+
+it('caches the harmonogram per year but always asks STAG for the current period', function () {
+    Http::fake([
+        STAG_GET_AKTUALNI_OBDOBI_INFO => Http::response(stagObdobi()),
+        STAG_GET_HARMONOGRAM_ROKU => Http::response(['harmonogramItem' => [stagHarmonogramItem('1.9.2026', 'Začátek ak. roku')]]),
+    ]);
+    $user = User::factory()->create();
+
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class)->assertOk()->assertSee('"using_outdated_data":false');
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class, ['year' => '2027'])->assertOk();
+
+    expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getHarmonogramRoku')))->toHaveCount(2)
+        ->and(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getAktualniObdobiInfo')))->toHaveCount(3);
+});
+
+it('does not keep an empty harmonogram, so a year published later is picked up', function () {
+    Http::fake([
+        STAG_GET_AKTUALNI_OBDOBI_INFO => Http::response(stagObdobi()),
+        STAG_GET_HARMONOGRAM_ROKU => Http::sequence()
+            ->push(['harmonogramItem' => []])
+            ->push(['harmonogramItem' => [stagHarmonogramItem('1.9.2027', 'Začátek ak. roku')]]),
+    ]);
+    $user = User::factory()->create();
+
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class, ['year' => '2027'])->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class, ['year' => '2027'])->assertOk()->assertSee('2027-09-01');
+});
+
+it('serves the old harmonogram and flags it when STAG fails after expiry', function () {
+    Http::fake([
+        STAG_GET_AKTUALNI_OBDOBI_INFO => Http::response(stagObdobi()),
+        STAG_GET_HARMONOGRAM_ROKU => Http::sequence()
+            ->push(['harmonogramItem' => [stagHarmonogramItem('21.9.2026', 'Začíná: Zimní semestr')]])
+            ->push('Service Unavailable', 503),
+    ]);
+    $user = User::factory()->create();
+
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class)->assertOk();
+    $this->travel(ReferenceData::CALENDAR_TTL_SECONDS + 1)->seconds();
+
+    StagMcpServer::actingAs($user)->tool(GetAcademicCalendarTool::class)
+        ->assertOk()
+        ->assertHasNoErrors()
+        ->assertSee('Začíná: Zimní semestr')
+        ->assertSee('"using_outdated_data":true');
 });
