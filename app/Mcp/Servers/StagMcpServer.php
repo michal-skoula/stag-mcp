@@ -6,6 +6,7 @@ use App\Mcp\Tools\GetBudovyTool;
 use App\Mcp\Tools\GetHarmonogramTool;
 use App\Mcp\Tools\GetKalendarTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
+use App\Mcp\Tools\GetProgramInfoTool;
 use App\Mcp\Tools\GetStudijniPlanTool;
 use App\Mcp\Tools\GetStudijniPokrokTool;
 use App\Mcp\Tools\GetUcitelInfoTool;
@@ -16,6 +17,7 @@ use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
 use App\Mcp\Tools\SearchPredmetyTool;
+use App\Mcp\Tools\SearchProgramyTool;
 use App\Mcp\Tools\SearchUciteleTool;
 use App\Mcp\Tools\StudyAdvisorTool;
 use App\Mcp\Tools\WhoAmITool;
@@ -45,6 +47,8 @@ class StagMcpServer extends Server
         GetStudijniPokrokTool::class,
         ListCertifikatyTool::class,
         ListExamDatesTool::class,
+        SearchProgramyTool::class,
+        GetProgramInfoTool::class,
     ];
 
     protected array $resources = [
