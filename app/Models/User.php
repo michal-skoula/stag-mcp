@@ -68,4 +68,9 @@ class User extends Authenticatable // implements MustVerifyEmail
     {
         return $this->hasOne(UserPreferences::class);
     }
+
+    public function onboardingSuggestion(): HasOne
+    {
+        return $this->hasOne(OnboardingSuggestion::class);
+    }
 }

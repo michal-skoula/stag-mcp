@@ -1,7 +1,11 @@
 <?php
 
+use App\Jobs\PrefillOnboardingFromStag;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
+
+beforeEach(fn () => Queue::fake());
 
 it('stores the ticket and a thirty minute expiry by default', function () {
     Carbon::setTestNow('2026-09-11 12:00:00');
@@ -51,4 +55,20 @@ it('clears the ticket and its expiry on revoke', function () {
 it('turns guests away', function () {
     $this->get(route('stag.authorize', ['stagUserTicket' => 'a-ticket']))
         ->assertRedirect(route('login'));
+});
+
+it('queues the onboarding prefill when STAG is linked', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('stag.authorize', ['stagUserTicket' => 'a-ticket']))
+        ->assertOk();
+
+    Queue::assertPushed(PrefillOnboardingFromStag::class, fn ($job) => $job->user->is($user));
+});
+
+it('does not queue the prefill when the ticket is missing', function () {
+    $this->actingAs(User::factory()->create())->get(route('stag.authorize'));
+
+    Queue::assertNothingPushed();
 });
