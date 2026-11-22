@@ -276,7 +276,7 @@ it('resolves osCislo via getStagUserListForActualUser when not given', function 
         && $request['osCislo'] === 'A25B0093P');
 });
 
-it('skips osCislo resolution when os_cislo is given explicitly', function () {
+it('skips osCislo resolution when student_id is given explicitly', function () {
     Http::fake([
         STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
         STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => stagKalendarWeek46()]),
@@ -286,7 +286,7 @@ it('skips osCislo resolution when os_cislo is given explicitly', function () {
         ->tool(GetTimetableTool::class, [
             'date_from' => '2026-11-09',
             'date_to' => '2026-11-13',
-            'os_cislo' => 'B20B9999P',
+            'student_id' => 'B20B9999P',
         ])
         ->assertOk();
 
@@ -303,7 +303,7 @@ it('errors when no osCislo can be resolved and none was given', function () {
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(GetTimetableTool::class)
         ->assertHasErrors()
-        ->assertSee('Could not resolve an osCislo');
+        ->assertSee('Could not find a student_id for this account');
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getRozvrhByStudent'));
 });
@@ -396,7 +396,7 @@ it('maps exam occurrences to kind exam', function () {
         ->assertOk()
         ->assertSee('"kind":"exam"')
         ->assertSee('"type":"Zkouška"')
-        ->assertSee('"katedra":"KIV","zkratka":"DB1"');
+        ->assertSee('"department":"KIV","code":"DB1"');
 });
 
 it('splits a multi-teacher list without breaking on a comma inside a title', function () {
@@ -411,7 +411,7 @@ it('splits a multi-teacher list without breaking on a comma inside a title', fun
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(GetTimetableTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
         ->assertOk()
-        ->assertSee('"teachers":[{"ucit_idno":54539,"name":"Ing. Ladislav Pešička, Ph.D."},{"ucit_idno":294708,"name":"Daniel Rössner"}]');
+        ->assertSee('"teachers":[{"teacher_id":54539,"name":"Ing. Ladislav Pešička, Ph.D."},{"teacher_id":294708,"name":"Daniel Rössner"}]');
 });
 
 it('strips the leading date from nekonaSe, keeps the structured room even when the note names another, and never emits cancelled', function () {
@@ -571,7 +571,7 @@ it('rejects a count above the maximum without calling STAG', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(GetTimetableTool::class, ['count' => 501])
-        ->assertHasErrors();
+        ->assertHasErrors(['count must be a whole number from 1 to 500.']);
 
     Http::assertNothingSent();
 });
@@ -591,7 +591,7 @@ it('rejects date_from after date_to without calling STAG', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(GetTimetableTool::class, ['date_from' => '2026-11-13', 'date_to' => '2026-11-09'])
-        ->assertHasErrors();
+        ->assertHasErrors(['date_from must be on or before date_to.']);
 
     Http::assertNothingSent();
 });
@@ -622,4 +622,14 @@ it('names days in the pagination descriptions', function () {
         ->and($input['offset']->toArray()['description'])->toContain('days')
         ->and($output['total']->toArray()['description'])->toContain('days')
         ->and($output['count']->toArray()['description'])->toContain('days');
+});
+
+it('names the argument and the format it accepts when a date is malformed', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetTimetableTool::class, ['date_from' => '9.11.2026'])
+        ->assertHasErrors(['date_from must be a date as YYYY-MM-DD, e.g. 2026-11-09.']);
+
+    Http::assertNothingSent();
 });
