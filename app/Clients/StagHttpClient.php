@@ -3,6 +3,7 @@
 namespace App\Clients;
 
 use App\Contracts\StagClient;
+use App\Events\StagRequestCompleted;
 use App\Exceptions\StagException;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
@@ -10,6 +11,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
 use SimpleXMLElement;
 
@@ -42,7 +44,7 @@ final readonly class StagHttpClient implements StagClient
      */
     public function get(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
+        return $this->send('GET', $path, fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)));
     }
 
     /**
@@ -53,7 +55,7 @@ final readonly class StagHttpClient implements StagClient
      */
     public function post(string $path, array $data = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r->post($path, $this->withDefaults($data)));
+        return $this->send('POST', $path, fn (PendingRequest $r) => $r->post($path, $this->withDefaults($data)));
     }
 
     /**
@@ -64,7 +66,7 @@ final readonly class StagHttpClient implements StagClient
      */
     public function put(string $path, array $query = []): array
     {
-        return $this->send(fn (PendingRequest $r) => $r
+        return $this->send('PUT', $path, fn (PendingRequest $r) => $r
             ->withOptions(['query' => $this->toQueryString($this->withDefaults($query))])
             ->put($path));
     }
@@ -84,13 +86,15 @@ final readonly class StagHttpClient implements StagClient
     public function getXml(string $path, array $query = []): SimpleXMLElement
     {
         $body = $this->sendRaw(
+            'GET',
+            $path,
             fn (PendingRequest $r) => $r->get($path, $this->withDefaults($query)),
             accept: 'application/xml',
         )->body();
 
         $xml = simplexml_load_string($body, options: LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
 
-        return $xml !== false ? $xml : throw StagException::emptyResponse('XML document');
+        return $xml !== false ? $xml : throw StagException::emptyResponse('XML document')->at($path, null);
     }
 
     /**
@@ -99,9 +103,9 @@ final readonly class StagHttpClient implements StagClient
      *
      * @throws StagException
      */
-    private function send(callable $call): array
+    private function send(string $method, string $path, callable $call): array
     {
-        return $this->sendRaw($call)->json() ?? [];
+        return $this->sendRaw($method, $path, $call)->json() ?? [];
     }
 
     /**
@@ -111,28 +115,52 @@ final readonly class StagHttpClient implements StagClient
      * A 401 means different things depending on whether a token was sent at all,
      * and the two need different instructions back to the user.
      *
+     * Every call fires a StagRequestCompleted event with the endpoint, status and
+     * duration. The query string and body are never part of it.
+     *
      * @param  callable(PendingRequest): Response  $call
      *
      * @throws StagException
      */
-    private function sendRaw(callable $call, string $accept = 'application/json'): Response
+    private function sendRaw(string $method, string $path, callable $call, string $accept = 'application/json'): Response
     {
+        $started = hrtime(true);
+        $status = null;
+        $successful = false;
+
         try {
-            return $call($this->request($accept))->throw();
+            $response = $call($this->request($accept));
+            $status = $response->status();
+            $response->throw();
+            $successful = true;
+
+            return $response;
         } catch (ConnectionException $e) {
-            throw StagException::unreachable($e);
+            throw StagException::unreachable($e)->at($path, null);
         } catch (RequestException $e) {
+            $status = $e->response->status();
+
             if ($this->showRealExceptions) {
-                throw new StagException('['.$e->response->status().']: '.$e->getMessage(), previous: $e);
-            } else {
-                throw match ($e->response->status()) {
-                    401 => $this->hasStagToken()
-                        ? StagException::ticketRejected()
-                        : StagException::notAuthorized(),
-                    403 => StagException::roleRejected(),
-                    default => StagException::requestFailed($e->response->status(), $e),
-                };
+                throw (new StagException('['.$status.']: '.$e->getMessage(), previous: $e))->at($path, $status);
             }
+
+            throw (match ($status) {
+                401 => $this->hasStagToken()
+                    ? StagException::ticketRejected()
+                    : StagException::notAuthorized(),
+                403 => StagException::roleRejected(),
+                default => StagException::requestFailed($status, $e),
+            })->at($path, $status);
+        } finally {
+            event(new StagRequestCompleted(
+                $method,
+                $path,
+                $status,
+                round((hrtime(true) - $started) / 1e6, 1),
+                $successful,
+                $this->user->id,
+                Context::get('mcp_tool'),
+            ));
         }
     }
 

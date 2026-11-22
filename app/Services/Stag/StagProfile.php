@@ -8,6 +8,7 @@ use App\Mcp\Concerns\ResolvesStagIdentity;
 use App\Mcp\Enums\StudyForm;
 use App\Mcp\Enums\StudyProgrammeType;
 use App\Mcp\Enums\StudyState;
+use App\Services\Observability\StagErrorReporter;
 
 /**
  * Who the ticket holder is in STAG: the person, plus one entry per role
@@ -174,7 +175,9 @@ final class StagProfile
     {
         try {
             $info = $this->stag->get($path, $query);
-        } catch (StagException) {
+        } catch (StagException $e) {
+            app(StagErrorReporter::class)->degraded($e, 'get-profile role detail');
+
             return null;
         }
 

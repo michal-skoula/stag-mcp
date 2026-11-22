@@ -4,6 +4,7 @@ namespace App\Services\Teachers;
 
 use App\Contracts\StagClient;
 use App\Exceptions\StagException;
+use App\Services\Observability\StagErrorReporter;
 
 /**
  * A person's business card, from `vizitka/getVizitkaByUcitidno`.
@@ -33,7 +34,9 @@ final readonly class BusinessCard
     {
         try {
             $card = $stag->get('vizitka/getVizitkaByUcitidno', ['ucitidno' => $teacherId]);
-        } catch (StagException) {
+        } catch (StagException $e) {
+            app(StagErrorReporter::class)->degraded($e, 'business card');
+
             return new self([]);
         }
 

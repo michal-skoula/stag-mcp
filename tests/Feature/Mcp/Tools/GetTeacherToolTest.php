@@ -1,8 +1,10 @@
 <?php
 
+use App\Exceptions\StagDegradedException;
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetTeacherTool;
 use App\Models\User;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 
 const STAG_UCITEL_INFO = 'stag-ws.zcu.cz/ws/services/rest2/ucitel/getUcitelInfo*';
@@ -388,4 +390,27 @@ it('keeps a subject whose every role flag is off, with no roles', function () {
     getUcitel()
         ->assertOk()
         ->assertSee('"zkratka":"XYZ","nazev":"Nic","roles":[]');
+});
+
+it('reports a refused business card and a refused guarantor lookup', function () {
+    Exceptions::fake();
+    fakeUcitel(vizitka: Http::response('Role rejected', 403), garanti: Http::response('Internal Server Error', 500));
+
+    getUcitel()->assertOk();
+
+    Exceptions::assertReported(fn (StagDegradedException $e) => $e->endpoint === 'vizitka/getVizitkaByUcitidno'
+        && $e->stagStatus === 403
+        && $e->handler === 'business card');
+    Exceptions::assertReported(fn (StagDegradedException $e) => $e->endpoint === 'ucitel/getGarant_ProgramOborByUcitIdno'
+        && $e->stagStatus === 500
+        && $e->handler === 'teacher guarantees');
+});
+
+it('reports nothing when every call succeeds', function () {
+    Exceptions::fake();
+    fakeUcitel();
+
+    getUcitel()->assertOk();
+
+    Exceptions::assertNothingReported();
 });

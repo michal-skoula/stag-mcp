@@ -1,8 +1,10 @@
 <?php
 
+use App\Exceptions\StagDegradedException;
 use App\Mcp\Servers\StagMcpServer;
 use App\Mcp\Tools\GetProfileTool;
 use App\Models\User;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 
 const STAG_USER_LIST_V2 = 'stag-ws.zcu.cz/ws/services/rest2/help/getStagUserListForActualUserV2*';
@@ -299,4 +301,20 @@ it('handles an account with no roles at all', function () {
         ->tool(GetProfileTool::class)
         ->assertOk()
         ->assertSee('"roles":[]');
+});
+
+it('reports a role detail call it had to drop', function () {
+    Exceptions::fake();
+    Http::fake([
+        STAG_USER_LIST_V2 => Http::response(whoAmIUserList([whoAmIStudentRole()])),
+        STAG_GET_STUDENT_INFO => Http::response('Role rejected', 403),
+    ]);
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetProfileTool::class)
+        ->assertOk();
+
+    Exceptions::assertReported(fn (StagDegradedException $e) => $e->endpoint === 'student/getStudentInfo'
+        && $e->stagStatus === 403
+        && $e->handler === 'get-profile role detail');
 });
