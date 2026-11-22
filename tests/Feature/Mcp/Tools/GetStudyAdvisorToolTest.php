@@ -241,13 +241,13 @@ it('returns a null advisor when the study has none recorded', function () {
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getVizitkaByUcitidno'));
 });
 
-it('uses an explicit os_cislo without resolving identity', function () {
+it('uses an explicit student_id without resolving identity', function () {
     fakeAdvisor(studentInfo: ['osCislo' => 'R21P0002P']);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetStudyAdvisorTool::class, ['os_cislo' => 'R21P0002P'])
+        ->tool(GetStudyAdvisorTool::class, ['student_id' => 'R21P0002P'])
         ->assertOk()
-        ->assertSee('"os_cislo":"R21P0002P"');
+        ->assertSee('"student_id":"R21P0002P"');
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getStagUserListForActualUser'));
 });
@@ -262,4 +262,14 @@ it('errors when no osCislo can be resolved', function () {
         ->assertHasErrors();
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getStudentInfo'));
+});
+
+it('names the argument and what it accepts when student_id is not text', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetStudyAdvisorTool::class, ['student_id' => 12345])
+        ->assertHasErrors(['student_id must be a personal number as text, e.g. "A21B0123P".']);
+
+    Http::assertNothingSent();
 });
