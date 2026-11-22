@@ -6,6 +6,7 @@ use App\Mcp\Tools\GetBudovyTool;
 use App\Mcp\Tools\GetHarmonogramTool;
 use App\Mcp\Tools\GetKalendarTool;
 use App\Mcp\Tools\GetPredmetInfoTool;
+use App\Mcp\Tools\GetTerminyTool;
 use App\Mcp\Tools\GetUcitelInfoTool;
 use App\Mcp\Tools\GetZnamkyTool;
 use App\Mcp\Tools\ListNotificationsTool;
@@ -37,6 +38,7 @@ class StagMcpServer extends Server
         StudyAdvisorTool::class,
         SearchUciteleTool::class,
         GetUcitelInfoTool::class,
+        GetTerminyTool::class,
     ];
 
     protected array $resources = [

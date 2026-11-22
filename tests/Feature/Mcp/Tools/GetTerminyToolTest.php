@@ -1,0 +1,385 @@
+<?php
+
+use App\Mcp\Servers\StagMcpServer;
+use App\Mcp\Tools\GetTerminyTool;
+use App\Models\User;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+
+const TERMINY_OS_CISLO = 'X26B0001P';
+
+beforeEach(function () {
+    Carbon::setTestNow(Carbon::parse('2026-11-22 12:00:00', 'Europe/Prague'));
+});
+
+afterEach(function () {
+    /* The terminy writes are GETs too, so guard every test against reaching one. */
+    Http::assertNotSent(fn (HttpRequest $request) => preg_match('#/terminy/(zapis|odhlas)#', $request->url()) === 1);
+});
+
+/**
+ * One getTerminyZkousek row, shaped as STAG returns it (captured 22.11.2026,
+ * names and contact details replaced).
+ *
+ * @return array<string, mixed>
+ */
+function terminyRow(array $overrides = []): array
+{
+    return array_merge([
+        'termIdno' => 1239020,
+        'ucitIdno' => 10001,
+        'ucitel' => [
+            'ucitIdno' => 10001,
+            'jmeno' => 'Jan',
+            'prijmeni' => 'Novák',
+            'titulPred' => 'Ing.',
+            'titulZa' => 'Ph.D.',
+            'platnost' => 'A',
+            'zamestnanec' => 'A',
+            'katedra' => 'KIV',
+            'pracovisteDalsi' => null,
+            'email' => 'novak@example.com',
+            'telefon' => null,
+            'telefon2' => null,
+            'url' => null,
+            'phdSkolitel' => 'N',
+            'zkrBudovy' => 'UC',
+            'cisloMistnosti' => '304',
+        ],
+        'predmet' => 'DB1',
+        'katedra' => 'KIV',
+        'rok' => '2026',
+        'semestr' => 'ZS',
+        'datum' => ['value' => '11.1.2027'],
+        'obsazeni' => '19',
+        'limit' => '40',
+        'skupinaObsazeni' => null,
+        'skupinaLimit' => null,
+        'nadSkupinaObsazeni' => null,
+        'nadSkupinaLimit' => null,
+        'casOd' => '13:00:00',
+        'casDo' => '15:30:00',
+        'budova' => 'UU',
+        'mistnost' => '108',
+        'kontakt' => null,
+        'poznamka' => null,
+        'opravny' => '1',
+        'deadlineDatumOdhlaseni' => ['value' => '10.1.2027 13:00'],
+        'deadlineDatumPrihlaseni' => ['value' => '11.1.2027 12:00'],
+        'zacatekPrihlasovani' => null,
+        'platnost' => 'A',
+        'typTerminu' => 'Zkouška',
+        'grteIdno' => null,
+    ], $overrides);
+}
+
+/**
+ * A getTerminyProStudenta row: the same term plus the student's state, as
+ * the WADL's terminProStudentaType declares it.
+ *
+ * @return array<string, mixed>
+ */
+function terminyStudentRow(array $overrides = []): array
+{
+    return array_merge(terminyRow(), [
+        'osCislo' => TERMINY_OS_CISLO,
+        'zapsan' => false,
+        'lzeZapsatOdepsat' => true,
+        'kodDuvoduProcNelzeZapsatOdepsat' => null,
+        'textDuvoduProcNelzeZapsatOdepsat' => null,
+        'popisDuvoduProcNelzeZapsatOdepsat' => null,
+        'frontaZapsan' => false,
+        'frontaLzeZapsatOdepsat' => false,
+        'frontaKodDuvoduProcNelzeZapsatOdepsat' => null,
+        'frontaTextDuvoduProcNelzeZapsatOdepsat' => null,
+        'frontaPopisDuvoduProcNelzeZapsatOdepsat' => null,
+    ], $overrides);
+}
+
+/**
+ * Fakes the three reads the tool makes. getTerminyZkousek answers both the
+ * search and the student's registered-terms lookup, told apart by osCislo.
+ *
+ * @param  list<array<string, mixed>>  $search
+ * @param  list<array<string, mixed>>  $student
+ * @param  list<array<string, mixed>>  $registered
+ */
+function fakeTerminy(array $search = [], array $student = [], array $registered = [], ?string $osCislo = TERMINY_OS_CISLO, mixed $studentResponse = null): void
+{
+    Http::fake(function (HttpRequest $request) use ($search, $student, $registered, $osCislo, $studentResponse) {
+        $path = parse_url($request->url(), PHP_URL_PATH);
+
+        return match (true) {
+            str_ends_with($path, 'help/getStagUserListForActualUserV2') => Http::response([
+                'jmeno' => 'Jana',
+                'prijmeni' => 'Testová',
+                'stagUserInfo' => [[
+                    'userName' => $osCislo ?? 'TESTOVA',
+                    'role' => $osCislo !== null ? 'ST' : 'VY',
+                    'osCislo' => $osCislo,
+                    'ucitIdno' => $osCislo !== null ? null : 10002,
+                ]],
+            ]),
+            str_ends_with($path, 'terminy/getTerminyProStudenta') => $studentResponse ?? Http::response(['termin' => $student]),
+            str_ends_with($path, 'terminy/getTerminyZkousek') => Http::response([
+                'termin' => isset($request->data()['osCislo']) ? $registered : $search,
+            ]),
+            default => Http::response('unexpected '.$path, 599),
+        };
+    });
+}
+
+function getTerminy(array $arguments = []): mixed
+{
+    return StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetTerminyTool::class, $arguments);
+}
+
+it('refuses a caller with no STAG ticket', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetTerminyTool::class, ['katedra' => 'KIV'])
+        ->assertHasErrors();
+
+    Http::assertNothingSent();
+});
+
+it('rejects arguments STAG would silently answer with nothing', function (array $arguments) {
+    Http::fake();
+
+    getTerminy($arguments)->assertHasErrors();
+
+    Http::assertNothingSent();
+})->with([
+    'semester' => [['katedra' => 'KIV', 'semestr' => 'XX']],
+    'year as a range' => [['katedra' => 'KIV', 'rok' => '2025/2026']],
+    'wildcard' => [['katedra' => 'KI%']],
+    'count over max' => [['katedra' => 'KIV', 'count' => 201]],
+]);
+
+it('forwards a subject search to STAG without room bookings', function () {
+    fakeTerminy(search: [terminyRow()]);
+
+    getTerminy(['katedra' => 'KIV', 'zkratka' => 'DB1', 'rok' => 2026, 'semestr' => 'ZS'])->assertOk();
+
+    Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyZkousek')
+        && ! isset($request->data()['osCislo'])
+        && $request->data() == ['katedra' => 'KIV', 'zkratka' => 'DB1', 'rok' => '2026', 'semestr' => 'ZS', 'zobrazitBlokovane' => 'false']);
+});
+
+it('maps a term into dates, times, capacity and deadlines', function () {
+    fakeTerminy(search: [terminyRow()]);
+
+    getTerminy(['katedra' => 'KIV', 'zkratka' => 'DB1'])
+        ->assertOk()
+        ->assertSee('"term_id":1239020')
+        ->assertSee('"subject":{"katedra":"KIV","zkratka":"DB1","rok":"2026","semestr":"ZS"}')
+        ->assertSee('"type":"exam","type_label":"Zkouška","status":"valid"')
+        ->assertSee('"date":"2027-01-11","time":{"from":"13:00","to":"15:30"}')
+        ->assertSee('"location":{"building":"UU","room":"108"}')
+        ->assertSee('"examiner":{"teacher_id":10001,"name":"Ing. Jan Novák, Ph.D."}')
+        ->assertSee('"capacity":{"registered":19,"limit":40,"free":21}')
+        ->assertSee('"group":null')
+        ->assertSee('"attempts_allowed":"first_attempt_only"')
+        ->assertSee('"register_by":"2027-01-11 12:00","register_by_passed":false,"unregister_by":"2027-01-10 13:00","unregister_by_passed":false')
+        ->assertDontSee('novak@example.com');
+});
+
+it('reports an unlimited term and a capacity group', function () {
+    fakeTerminy(search: [terminyRow([
+        'limit' => null,
+        'grteIdno' => 283531,
+        'skupinaObsazeni' => '11',
+        'nadSkupinaObsazeni' => '20',
+        'typTerminu' => 'Zápočet',
+        'opravny' => 'N',
+    ])]);
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertOk()
+        ->assertSee('"capacity":{"registered":19,"limit":null,"free":null}')
+        ->assertSee('"group":{"id":283531,"registered":11,"limit":null,"parent_registered":20,"parent_limit":null}')
+        ->assertSee('"type":"credit"')
+        ->assertSee('"attempts_allowed":"all"');
+});
+
+it('drops room bookings even if STAG sends them', function () {
+    fakeTerminy(search: [
+        terminyRow(),
+        terminyRow(['termIdno' => 2, 'platnost' => 'B', 'poznamka' => 'SZZ Bc. - I. termín']),
+    ]);
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertOk()
+        ->assertSee('"total":1')
+        ->assertDontSee('SZZ Bc.');
+});
+
+it('hides past and cancelled terms unless asked', function () {
+    fakeTerminy(search: [
+        terminyRow(),
+        terminyRow(['termIdno' => 2, 'datum' => ['value' => '12.10.2026']]),
+        terminyRow(['termIdno' => 3, 'platnost' => 'N']),
+    ]);
+
+    getTerminy(['katedra' => 'KIV'])->assertSee('"total":1');
+    getTerminy(['katedra' => 'KIV', 'include_past' => true])->assertSee('"total":2');
+    getTerminy(['katedra' => 'KIV', 'include_cancelled' => true])->assertSee('"total":2')->assertSee('"status":"cancelled"');
+});
+
+it('keeps a term happening today', function () {
+    fakeTerminy(search: [terminyRow(['datum' => ['value' => '22.11.2026'], 'casOd' => '08:00:00'])]);
+
+    getTerminy(['katedra' => 'KIV'])->assertSee('"total":1');
+});
+
+it('keeps a cancelled term the caller is still registered on', function () {
+    fakeTerminy(
+        search: [terminyRow(['platnost' => 'N'])],
+        registered: [terminyRow(['platnost' => 'N'])],
+    );
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertSee('"total":1')
+        ->assertSee('"status":"cancelled"');
+});
+
+it('marks the caller\'s registration state on search results', function () {
+    fakeTerminy(
+        search: [
+            terminyRow(['termIdno' => 1]),
+            terminyRow(['termIdno' => 2]),
+            terminyRow(['termIdno' => 3]),
+        ],
+        student: [terminyStudentRow([
+            'termIdno' => 1,
+            'lzeZapsatOdepsat' => false,
+            'kodDuvoduProcNelzeZapsatOdepsat' => 'X1',
+            'textDuvoduProcNelzeZapsatOdepsat' => 'Termín je plně obsazen.',
+        ])],
+        registered: [terminyRow(['termIdno' => 2])],
+    );
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertOk()
+        ->assertSee('"os_cislo":"'.TERMINY_OS_CISLO.'"')
+        ->assertSee('"registration":{"registered":false,"can_change":false,"reason_code":"X1","reason":"Termín je plně obsazen.","reason_detail":null,"queue":{"registered":false,"can_change":false,"reason":null}}')
+        ->assertSee('"term_id":2')
+        ->assertSee('"registration":{"registered":true,"can_change":null')
+        ->assertSee('"registration":{"registered":false,"can_change":null');
+
+    Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyProStudenta')
+        && $request->data() == ['osCislo' => TERMINY_OS_CISLO, 'stagUser' => TERMINY_OS_CISLO]);
+});
+
+it('filters a search to the terms the caller is registered on', function () {
+    fakeTerminy(
+        search: [terminyRow(['termIdno' => 1]), terminyRow(['termIdno' => 2])],
+        registered: [terminyRow(['termIdno' => 2])],
+    );
+
+    getTerminy(['katedra' => 'KIV', 'registered_only' => true])
+        ->assertSee('"total":1')
+        ->assertSee('"term_id":2');
+});
+
+it('returns search results without registration for a caller with no student role', function () {
+    fakeTerminy(search: [terminyRow()], osCislo: null);
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertOk()
+        ->assertSee('"os_cislo":null')
+        ->assertSee('"registration":null');
+
+    Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyProStudenta'));
+});
+
+it('still returns search results when STAG refuses the registration lookup', function () {
+    fakeTerminy(search: [terminyRow()], studentResponse: Http::response('Forbidden', 403));
+
+    getTerminy(['katedra' => 'KIV'])
+        ->assertOk()
+        ->assertSee('"total":1')
+        ->assertSee('"registration":null');
+});
+
+it('lists the caller\'s own terms by merging both student sources', function () {
+    fakeTerminy(
+        student: [
+            terminyStudentRow(['termIdno' => 1, 'zapsan' => true]),
+            terminyStudentRow(['termIdno' => 2, 'predmet' => 'PPA2', 'datum' => ['value' => '20.1.2027']]),
+        ],
+        registered: [
+            terminyRow(['termIdno' => 1]),
+            terminyRow(['termIdno' => 3, 'predmet' => 'OKS', 'datum' => ['value' => '5.1.2027']]),
+        ],
+    );
+
+    getTerminy()
+        ->assertOk()
+        ->assertSee('"source":"student"')
+        ->assertSee('"total":3')
+        ->assertSee('"registration":{"registered":true,"can_change":true');
+
+    Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyZkousek')
+        && ! isset($request->data()['osCislo']));
+});
+
+it('orders terms by date and start time', function () {
+    fakeTerminy(search: [
+        terminyRow(['termIdno' => 3, 'datum' => ['value' => '20.1.2027']]),
+        terminyRow(['termIdno' => 2, 'datum' => ['value' => '5.1.2027'], 'casOd' => '13:00:00']),
+        terminyRow(['termIdno' => 1, 'datum' => ['value' => '5.1.2027'], 'casOd' => '08:00:00']),
+    ]);
+
+    $ids = getTerminy(['katedra' => 'KIV'])->assertOk();
+
+    $ids->assertSee('"terms":[{"term_id":1,');
+});
+
+it('reads an earlier year\'s registrations by rok', function () {
+    fakeTerminy(
+        student: [terminyStudentRow(['termIdno' => 9])],
+        registered: [terminyRow(['termIdno' => 5, 'rok' => '2025', 'datum' => ['value' => '22.1.2026']])],
+    );
+
+    getTerminy(['rok' => 2025, 'include_past' => true])
+        ->assertOk()
+        ->assertSee('"total":1')
+        ->assertSee('"term_id":5')
+        ->assertDontSee('"term_id":9');
+
+    Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'getTerminyZkousek')
+        && ($request->data()['osCislo'] ?? null) === TERMINY_OS_CISLO
+        && ($request->data()['rok'] ?? null) === '2025');
+});
+
+it('filters the caller\'s own terms by semester', function () {
+    fakeTerminy(student: [
+        terminyStudentRow(['termIdno' => 1, 'semestr' => 'ZS']),
+        terminyStudentRow(['termIdno' => 2, 'semestr' => 'LS']),
+    ]);
+
+    getTerminy(['semestr' => 'LS'])
+        ->assertSee('"total":1')
+        ->assertSee('"term_id":2');
+});
+
+it('errors when listing own terms without a student role', function () {
+    fakeTerminy(osCislo: null);
+
+    getTerminy()->assertHasErrors(['no student role']);
+});
+
+it('pages through the results', function () {
+    fakeTerminy(search: array_map(
+        fn (int $i) => terminyRow(['termIdno' => $i, 'datum' => ['value' => sprintf('%d.1.2027', $i)]]),
+        range(1, 30),
+    ));
+
+    getTerminy(['katedra' => 'KIV', 'count' => 10, 'offset' => 20])
+        ->assertSee('"total":30,"offset":20,"count":10')
+        ->assertSee('"terms":[{"term_id":21,');
+});
