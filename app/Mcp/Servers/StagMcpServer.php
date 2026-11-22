@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Tools\ConfirmExamRegistrationTool;
 use App\Mcp\Tools\GetBudovyTool;
 use App\Mcp\Tools\GetHarmonogramTool;
 use App\Mcp\Tools\GetKalendarTool;
@@ -12,6 +13,7 @@ use App\Mcp\Tools\ListExamDatesTool;
 use App\Mcp\Tools\ListNotificationsTool;
 use App\Mcp\Tools\ListRoomsTool;
 use App\Mcp\Tools\MarkNotificationsReadTool;
+use App\Mcp\Tools\PrepareExamRegistrationTool;
 use App\Mcp\Tools\SearchPredmetyTool;
 use App\Mcp\Tools\SearchUciteleTool;
 use App\Mcp\Tools\StudyAdvisorTool;
@@ -39,6 +41,8 @@ class StagMcpServer extends Server
         SearchUciteleTool::class,
         GetUcitelInfoTool::class,
         ListExamDatesTool::class,
+        PrepareExamRegistrationTool::class,
+        ConfirmExamRegistrationTool::class,
     ];
 
     protected array $resources = [
