@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('list-buildings')]
 #[Title('List buildings')]
-#[Description('Lists buildings known to STAG, with address and GPS coordinates. Unfiltered this is 80+ buildings - pass city, campus, or address to narrow it down.')]
+#[Description('University buildings (budovy): abbreviation, campus, street address, coordinates and a directions link. Call it to turn a building code such as "UC" into an address, or to see what is on a campus. Every filter is optional, and city defaults to the user\'s saved city; unfiltered there are 80+ buildings, so narrow by city, campus or address where you can.')]
 #[IsReadOnly]
 class ListBuildingsTool extends Tool
 {
@@ -59,7 +59,7 @@ class ListBuildingsTool extends Tool
     public function outputSchema(JsonSchema $schema): array
     {
         return [
-            'count' => $schema->integer()
+            'total' => $schema->integer()
                 ->description('How many buildings were returned.'),
             'buildings' => $schema->array()
                 ->description('Buildings matching the filters.')
@@ -97,6 +97,10 @@ class ListBuildingsTool extends Tool
             'city' => ['string', 'nullable'],
             'campus' => ['string', 'nullable'],
             'address' => ['string', 'nullable'],
+        ], [
+            'city' => 'city must be a city name as text, e.g. "'.City::values()[0].'".',
+            'campus' => 'campus must be a campus name or STAG campus code as text, e.g. "'.Location::labels()[0].'".',
+            'address' => 'address must be text to look for in the street, house number or city.',
         ]);
 
         // An agent has no reason to know the user's city unless told, so an
@@ -120,7 +124,7 @@ class ListBuildingsTool extends Tool
         ));
 
         return Response::structured([
-            'count' => count($items),
+            'total' => count($items),
             'buildings' => array_map($this->toBuilding(...), $items),
         ]);
     }

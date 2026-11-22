@@ -60,8 +60,8 @@ it('sends the exact-match filters STAG expects', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(ListRoomsTool::class, [
-            'building_shortcode' => 'UL',
-            'room_number' => '103',
+            'building' => 'UL',
+            'room' => '103',
             'department' => 'KKS',
             'room_type' => 'Učebna',
         ])
@@ -82,7 +82,7 @@ it('translates the room type label into the numeric code STAG filters on', funct
     Http::assertSent(fn ($request) => $request['typ'] === '4');
 });
 
-it('defaults only_valid to true', function () {
+it('leaves retired rooms out by default', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
@@ -92,11 +92,11 @@ it('defaults only_valid to true', function () {
     Http::assertSent(fn ($request) => $request['jenPlatne'] === 'true');
 });
 
-it('sends only_valid as false when asked to include decommissioned rooms', function () {
+it('asks STAG for retired rooms when include_retired is set', function () {
     Http::fake([STAG_GET_MISTNOSTI_INFO => Http::response(['mistnostInfo' => []])]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(ListRoomsTool::class, ['only_valid' => false])
+        ->tool(ListRoomsTool::class, ['include_retired' => true])
         ->assertOk();
 
     Http::assertSent(fn ($request) => $request['jenPlatne'] === 'false');
@@ -111,8 +111,8 @@ it('maps rooms into the narrowed field set with nested coordinates', function ()
         ->assertSee('"total":1')
         ->assertSee('"offset":0')
         ->assertSee('"count":1')
-        ->assertSee('"building_shortcode":"UL"')
-        ->assertSee('"room_number":"103"')
+        ->assertSee('"building":"UL"')
+        ->assertSee('"room":"103"')
         ->assertSee('"coordinates":{"latitude":49.7253292,"longitude":13.3507753}')
         ->assertDontSee('spolecny_fond')
         ->assertDontSee('plocha')
@@ -176,7 +176,7 @@ it('pages through results with offset', function () {
         ->assertSee('"total":10')
         ->assertSee('"offset":9')
         ->assertSee('"count":1')
-        ->assertSee('"room_number":"10"');
+        ->assertSee('"room":"10"');
 });
 
 it('rejects a count above the maximum', function () {
@@ -184,7 +184,7 @@ it('rejects a count above the maximum', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(ListRoomsTool::class, ['count' => 501])
-        ->assertHasErrors();
+        ->assertHasErrors(['count must be a whole number from 1 to 500.']);
 
     Http::assertNothingSent();
 });
@@ -205,7 +205,7 @@ it('rejects a room type outside the known set', function () {
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
         ->tool(ListRoomsTool::class, ['room_type' => 'Kuchyň'])
-        ->assertHasErrors();
+        ->assertHasErrors(['room_type must be one of: Aula, Kancelář, Laboratoř, Posluchárna, Tělovýchova, Učebna, Jiná.']);
 
     Http::assertNothingSent();
 });

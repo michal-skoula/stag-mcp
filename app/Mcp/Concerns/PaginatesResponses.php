@@ -74,6 +74,19 @@ trait PaginatesResponses
     }
 
     /**
+     * Validation messages for count and offset, to spread next to the tool's own.
+     *
+     * @return array<string, string>
+     */
+    protected function paginationMessages(): array
+    {
+        return [
+            'count' => 'count must be a whole number from 1 to '.$this->paginationMax().'.',
+            'offset' => 'offset must be a whole number, 0 or more. Use total from the previous page to pick the next one.',
+        ];
+    }
+
+    /**
      * Slice $rows by the validated count/offset, mapping only the rows kept.
      *
      * @param  list<mixed>  $rows

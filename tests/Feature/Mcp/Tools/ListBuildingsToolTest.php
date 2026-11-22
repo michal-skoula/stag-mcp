@@ -58,7 +58,7 @@ it('reshapes the STAG payload into compact english fields', function () {
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class)
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"')
         ->assertSee('"campus":"Není známa"')
         ->assertSee('"address":{"city":"Plzeň"');
@@ -81,7 +81,7 @@ it('returns an empty list without erroring', function () {
         ->tool(ListBuildingsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"count":0');
+        ->assertSee('"total":0');
 });
 
 it('filters by city, case-insensitively', function () {
@@ -93,7 +93,7 @@ it('filters by city, case-insensitively', function () {
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class, ['city' => 'cheb'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"CD"')
         ->assertDontSee('"code":"UL"');
 });
@@ -107,7 +107,7 @@ it('accepts a city STAG has not been seen with yet', function () {
         ->tool(ListBuildingsTool::class, ['city' => 'Ostrava'])
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"count":0');
+        ->assertSee('"total":0');
 });
 
 it('filters by a raw campus code', function () {
@@ -119,7 +119,7 @@ it('filters by a raw campus code', function () {
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class, ['campus' => 'b'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -132,7 +132,7 @@ it('filters by a campus label the same way as its raw code', function () {
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class, ['campus' => Location::Univerzitni->label()])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -145,7 +145,7 @@ it('filters by an address substring across street, house number, and city', func
     StagMcpServer::actingAs(User::factory()->create())
         ->tool(ListBuildingsTool::class, ['address' => '2762'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -161,7 +161,7 @@ it('defaults the city filter to the user\'s saved preference', function () {
     StagMcpServer::actingAs($user)
         ->tool(ListBuildingsTool::class)
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"CD"')
         ->assertDontSee('"code":"UL"');
 });
@@ -178,7 +178,7 @@ it('lets an explicit city filter override the saved preference', function () {
     StagMcpServer::actingAs($user)
         ->tool(ListBuildingsTool::class, ['city' => 'Plzeň'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"')
         ->assertDontSee('"code":"CD"');
 });
@@ -208,6 +208,16 @@ it('errors when there is no authenticated user', function () {
     StagMcpServer::tool(ListBuildingsTool::class)
         ->assertHasErrors()
         ->assertSee('must send a bearer token');
+
+    Http::assertNothingSent();
+});
+
+it('names the argument and what it accepts when a filter is not text', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(ListBuildingsTool::class, ['city' => 42])
+        ->assertHasErrors(['city must be a city name as text, e.g. "Plzeň".']);
 
     Http::assertNothingSent();
 });
