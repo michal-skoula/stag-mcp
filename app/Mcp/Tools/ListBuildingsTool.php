@@ -38,7 +38,7 @@ class ListBuildingsTool extends Tool
         $city = auth('sanctum')->user()?->preferences?->city;
 
         $cityDescription = 'Filter by city. Known values: '.implode(', ', City::values())
-            .'. Not validated — any string is matched as-is in case STAG adds a new city.';
+            .'. Any other city is matched as given, in case STAG adds one.';
 
         if ($city !== null) {
             $cityDescription .= " Defaults to '{$city}' from user preference.";
@@ -47,7 +47,7 @@ class ListBuildingsTool extends Tool
         return [
             'city' => $schema->string()->description($cityDescription),
             'campus' => $schema->string()
-                ->description('Filter by campus or part of town. Accepts a name ('.implode(', ', Location::labels()).') or its raw STAG code ('.implode(', ', Location::values()).'). Names match without regard to case or accents. Not validated — any string is matched.'),
+                ->description('Filter by campus or part of town. Accepts a name ('.implode(', ', Location::labels()).') or its raw STAG code ('.implode(', ', Location::values()).'). Names match without regard to case or accents.'),
             'address' => $schema->string()
                 ->description('Case-insensitive substring match against the street, house number, and city.'),
         ];
@@ -69,7 +69,7 @@ class ListBuildingsTool extends Tool
                     //       and it could provide better data as time goes on. probably needs a separate tool tho.
                     //       purely an idea for now.
                     'code' => $schema->string()->description('Building abbreviation, e.g. "UL".'),
-                    'campus' => $schema->string()->description('Campus/location label. Not yet decoded — currently the raw STAG code.'),
+                    'campus' => $schema->string()->description('Campus name, or the raw STAG campus code when it is not a known one.'),
                     'map_url' => $schema->anyOf([$schema->string()])->description('Directions link, or null.')->nullable(),
                     'address' => $schema->object([
                         'city' => $schema->anyOf([$schema->string()])->description('City, or null.')->nullable(),
