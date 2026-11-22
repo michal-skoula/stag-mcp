@@ -2,7 +2,7 @@
 
 use App\Mcp\Enums\Location;
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetBudovyTool;
+use App\Mcp\Tools\ListBuildingsTool;
 use App\Models\User;
 use App\Services\Stag\ReferenceData;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
@@ -38,7 +38,7 @@ it('works without a STAG token', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertOk()
         ->assertHasNoErrors();
 });
@@ -47,7 +47,7 @@ it('maps the GPS axes explicitly rather than by position', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertOk()
         ->assertSee('"latitude":49.7248378')
         ->assertSee('"longitude":13.3509269');
@@ -57,9 +57,9 @@ it('reshapes the STAG payload into compact english fields', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"')
         ->assertSee('"campus":"Není známa"')
         ->assertSee('"address":{"city":"Plzeň"');
@@ -69,7 +69,7 @@ it('nests address and coordinates under their own keys', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertOk()
         ->assertSee('"address":{"city":"Plzeň","street":"Univerzitní","house_number":"2762/22"}')
         ->assertSee('"coordinates":{"latitude":49.7248378,"longitude":13.3509269}');
@@ -79,7 +79,7 @@ it('treats an empty building list as a STAG fault rather than answering with not
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => []])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertHasErrors()
         ->assertSee('empty building list');
 });
@@ -88,18 +88,18 @@ it('returns an empty list when the filters match nothing', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['city' => 'Nowhere'])
+        ->tool(ListBuildingsTool::class, ['city' => 'Nowhere'])
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"count":0');
+        ->assertSee('"total":0');
 });
 
 it('answers a second call from the cache without calling STAG', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response(['items' => [stagBudova()]])]);
     $user = User::factory()->create();
 
-    StagMcpServer::actingAs($user)->tool(GetBudovyTool::class)->assertOk();
-    StagMcpServer::actingAs($user)->tool(GetBudovyTool::class, ['address' => 'Univerzitní'])
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)->assertOk();
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class, ['address' => 'Univerzitní'])
         ->assertOk()
         ->assertSee('"code":"UL"')
         ->assertSee('"using_outdated_data":false')
@@ -115,10 +115,10 @@ it('serves the old list and flags it when STAG fails after the cache expired', f
     ]);
     $user = User::factory()->create();
 
-    StagMcpServer::actingAs($user)->tool(GetBudovyTool::class)->assertOk();
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)->assertOk();
     $this->travel(ReferenceData::BUILDINGS_TTL_SECONDS + 1)->seconds();
 
-    StagMcpServer::actingAs($user)->tool(GetBudovyTool::class)
+    StagMcpServer::actingAs($user)->tool(ListBuildingsTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"code":"UL"')
@@ -129,7 +129,7 @@ it('errors when STAG fails and nothing was cached', function () {
     Http::fake([STAG_GET_BUDOVY => Http::response('Service Unavailable', 503)]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertHasErrors();
 });
 
@@ -140,9 +140,9 @@ it('filters by city, case-insensitively', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['city' => 'cheb'])
+        ->tool(ListBuildingsTool::class, ['city' => 'cheb'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"CD"')
         ->assertDontSee('"code":"UL"');
 });
@@ -153,10 +153,10 @@ it('accepts a city STAG has not been seen with yet', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['city' => 'Ostrava'])
+        ->tool(ListBuildingsTool::class, ['city' => 'Ostrava'])
         ->assertOk()
         ->assertHasNoErrors()
-        ->assertSee('"count":0');
+        ->assertSee('"total":0');
 });
 
 it('filters by a raw campus code', function () {
@@ -166,9 +166,9 @@ it('filters by a raw campus code', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['campus' => 'b'])
+        ->tool(ListBuildingsTool::class, ['campus' => 'b'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -179,9 +179,9 @@ it('filters by a campus label the same way as its raw code', function () {
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['campus' => Location::Univerzitni->label()])
+        ->tool(ListBuildingsTool::class, ['campus' => Location::Univerzitni->label()])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -192,9 +192,9 @@ it('filters by an address substring across street, house number, and city', func
     ]])]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetBudovyTool::class, ['address' => '2762'])
+        ->tool(ListBuildingsTool::class, ['address' => '2762'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"');
 });
 
@@ -208,9 +208,9 @@ it('defaults the city filter to the user\'s saved preference', function () {
     ]])]);
 
     StagMcpServer::actingAs($user)
-        ->tool(GetBudovyTool::class)
+        ->tool(ListBuildingsTool::class)
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"CD"')
         ->assertDontSee('"code":"UL"');
 });
@@ -225,9 +225,9 @@ it('lets an explicit city filter override the saved preference', function () {
     ]])]);
 
     StagMcpServer::actingAs($user)
-        ->tool(GetBudovyTool::class, ['city' => 'Plzeň'])
+        ->tool(ListBuildingsTool::class, ['city' => 'Plzeň'])
         ->assertOk()
-        ->assertSee('"count":1')
+        ->assertSee('"total":1')
         ->assertSee('"code":"UL"')
         ->assertDontSee('"code":"CD"');
 });
@@ -238,7 +238,7 @@ it('mentions the saved preference in the schema description when one exists', fu
 
     $this->actingAs($user, 'sanctum');
 
-    $schema = (new GetBudovyTool)->schema(new JsonSchemaTypeFactory);
+    $schema = (new ListBuildingsTool)->schema(new JsonSchemaTypeFactory);
 
     expect($schema['city']->toArray()['description'])->toContain("Defaults to 'Cheb' from user preference");
 });
@@ -246,7 +246,7 @@ it('mentions the saved preference in the schema description when one exists', fu
 it('does not mention a default city in the schema description without a saved preference', function () {
     $this->actingAs(User::factory()->create(), 'sanctum');
 
-    $schema = (new GetBudovyTool)->schema(new JsonSchemaTypeFactory);
+    $schema = (new ListBuildingsTool)->schema(new JsonSchemaTypeFactory);
 
     expect($schema['city']->toArray()['description'])->not->toContain('Defaults to');
 });
@@ -254,9 +254,19 @@ it('does not mention a default city in the schema description without a saved pr
 it('errors when there is no authenticated user', function () {
     Http::fake();
 
-    StagMcpServer::tool(GetBudovyTool::class)
+    StagMcpServer::tool(ListBuildingsTool::class)
         ->assertHasErrors()
         ->assertSee('must send a bearer token');
+
+    Http::assertNothingSent();
+});
+
+it('names the argument and what it accepts when a filter is not text', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(ListBuildingsTool::class, ['city' => 42])
+        ->assertHasErrors(['city must be a city name as text, e.g. "Plzeň".']);
 
     Http::assertNothingSent();
 });

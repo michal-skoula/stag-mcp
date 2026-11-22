@@ -13,7 +13,7 @@ use App\Mcp\Enums\StudyState;
  * Who the ticket holder is in STAG: the person, plus one entry per role
  * enriched with `student/getStudentInfo` or `ucitel/getUcitelInfo`.
  *
- * This is what the `who-am-i` tool returns and what onboarding prefill reads
+ * This is what the `get-profile` tool returns and what onboarding prefill reads
  * its suggestions from, so both go through here and a STAG call is never
  * written twice. The array shape is the tool's output schema.
  */
@@ -36,8 +36,8 @@ final class StagProfile
             'name' => [
                 'first' => $identity['jmeno'] ?? null,
                 'last' => $identity['prijmeni'] ?? null,
-                'title_before' => $identity['titulPred'] ?? null,
-                'title_after' => $identity['titulZa'] ?? null,
+                'titles_before' => $identity['titulPred'] ?? null,
+                'titles_after' => $identity['titulZa'] ?? null,
                 'full' => $this->fullName($identity),
             ],
             'email' => $identity['email'] ?? null,
@@ -78,10 +78,10 @@ final class StagProfile
             'role' => $row['role'] ?? null,
             'role_name' => $row['roleNazev'] ?? null,
             'user_name' => $row['userName'] ?? null,
-            'fakulta' => $row['fakulta'] ?? null,
-            'katedra' => $row['katedra'] ?? null,
-            'os_cislo' => $row['osCislo'] ?? null,
-            'ucit_idno' => $row['ucitIdno'] ?? null,
+            'faculty' => $row['fakulta'] ?? null,
+            'department' => $row['katedra'] ?? null,
+            'student_id' => $row['osCislo'] ?? null,
+            'teacher_id' => $row['ucitIdno'] ?? null,
             'email' => $row['email'] ?? null,
             'student' => $this->studentDetail($row),
             'teacher' => $this->teacherDetail($row),
@@ -105,13 +105,13 @@ final class StagProfile
         }
 
         return [
-            'os_cislo' => $info['osCislo'],
+            'student_id' => $info['osCislo'],
             'orion_login' => $info['userName'] ?? null,
             'email' => $info['email'] ?? null,
             'state' => $this->labelFor($info['stav'] ?? null, StudyState::class),
             'form' => $this->labelFor($info['formaSp'] ?? null, StudyForm::class),
             'type' => $this->labelFor($info['typSp'] ?? null, StudyProgrammeType::class),
-            'rocnik' => $info['rocnik'] ?? null,
+            'year_of_study' => $info['rocnik'] ?? null,
             'programme' => [
                 'name' => $info['nazevSp'] ?? null,
                 'code' => $info['kodSp'] ?? null,
@@ -140,18 +140,22 @@ final class StagProfile
         }
 
         return [
-            'ucit_idno' => $info['ucitIdno'],
-            'katedra' => $info['katedra'] ?? null,
-            'pracoviste_dalsi' => $info['pracovisteDalsi'] ?? null,
+            'teacher_id' => $info['ucitIdno'],
+            'department' => $info['katedra'] ?? null,
+            'other_department' => $info['pracovisteDalsi'] ?? null,
             'email' => $info['email'] ?? null,
-            'telefon' => $info['telefon'] ?? null,
-            'telefon2' => $info['telefon2'] ?? null,
-            'url' => $info['url'] ?? null,
-            'zkr_budovy' => $info['zkrBudovy'] ?? null,
-            'cislo_mistnosti' => $info['cisloMistnosti'] ?? null,
-            'platnost' => $this->fromStagBool($info['platnost'] ?? null),
-            'zamestnanec' => $this->fromStagBool($info['zamestnanec'] ?? null),
-            'phd_skolitel' => $this->fromStagBool($info['phdSkolitel'] ?? null),
+            'phones' => array_values(array_unique(array_filter(
+                [$info['telefon'] ?? null, $info['telefon2'] ?? null],
+                fn (?string $phone) => filled($phone),
+            ))),
+            'website' => $info['url'] ?? null,
+            'office' => [
+                'building' => $info['zkrBudovy'] ?? null,
+                'room' => $info['cisloMistnosti'] ?? null,
+            ],
+            'active' => $this->fromStagBool($info['platnost'] ?? null),
+            'employee' => $this->fromStagBool($info['zamestnanec'] ?? null),
+            'phd_supervisor' => $this->fromStagBool($info['phdSkolitel'] ?? null),
         ];
     }
 

@@ -12,7 +12,7 @@ use App\Services\Stag\StagProfile;
  * answers to onboarding questions.
  *
  * The identity and per-role detail come from {@see StagProfile}, the same
- * code `who-am-i` runs. The one extra call is `programy/getPlanyStudenta`,
+ * code `get-profile` runs. The one extra call is `programy/getPlanyStudenta`,
  * for the study start, which no student endpoint reports directly.
  *
  * A user can hold several studies. The one that is running wins, then the
@@ -93,11 +93,11 @@ final readonly class StagSuggestions
      */
     private function faculty(array $roles, ?array $study): ?string
     {
-        $faculty = $study['student']['programme']['faculty'] ?? $study['fakulta'] ?? null;
+        $faculty = $study['student']['programme']['faculty'] ?? $study['faculty'] ?? null;
 
         return filled($faculty)
             ? $faculty
-            : collect($roles)->pluck('fakulta')->first(fn ($code) => filled($code));
+            : collect($roles)->pluck('faculty')->first(fn ($code) => filled($code));
     }
 
     /**
@@ -113,7 +113,7 @@ final readonly class StagSuggestions
      */
     private function studyStart(?array $study): ?int
     {
-        $osCislo = $study['os_cislo'] ?? null;
+        $osCislo = $study['student_id'] ?? null;
 
         if (blank($osCislo)) {
             return null;

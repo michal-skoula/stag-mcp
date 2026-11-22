@@ -18,11 +18,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-ucitel-info')]
-#[Title('Get Ucitel Info')]
-#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phone, which office they sit in, their web page, which study programmes they guarantee, and which subjects they teach this academic year (or another one via year), each with their role (guarantor, lecturer, instructor, seminar leader, examiner). Find the teacher_id with search-ucitele first. Student teachers (demonstrators, doctoral assistants) often have no office or phone recorded, so email is the only contact STAG holds for them. Their subjects list is the best way to see what they teach, since their timetable can miss them.')]
+#[Name('get-teacher')]
+#[Title('Get teacher')]
+#[Description('Full detail for one teacher or staff member by teacher_id: name and titles, department, email and phones, office, web page, where to find consultation hours, and the study programmes they guarantee, and the subjects they teach this academic year (or another via year) with their role in each (guarantor, lecturer, instructor, seminar leader, examiner). Call it when the user wants to contact or find a specific person. Needs teacher_id, from search-teachers or from any tool that lists teachers. Student teachers (demonstrators, doctoral assistants) often have no office or phone on record, so email is the only contact STAG holds for them.')]
 #[IsReadOnly]
-class GetUcitelInfoTool extends Tool
+class GetTeacherTool extends Tool
 {
     use RequiresStagLogin;
 
@@ -49,7 +49,7 @@ class GetUcitelInfoTool extends Tool
     {
         return [
             'teacher_id' => $schema->integer()
-                ->description('The teacher_id (ucitIdno) from search-ucitele, or from any subject or timetable tool that lists teachers.')
+                ->description('The teacher_id (ucitIdno) from search-teachers, or from any subject, timetable or grades tool that lists teachers.')
                 ->required(),
             'year' => $schema->integer()
                 ->description('Academic year to list subjects for, as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
@@ -79,7 +79,7 @@ class GetUcitelInfoTool extends Tool
             'website' => $nullableString()->description('Personal web page, verbatim. Often lists teaching materials and consultation times.'),
             'offices' => $schema->array()->description('Where they sit. Usually one entry; more when they hold phone lines in different rooms. Empty when no business card is published or the person hid their room.')
                 ->items($schema->object([
-                    'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-budovy for an address.'),
+                    'building' => $nullableString()->description('Building abbreviation, e.g. "UC". Resolve it with list-buildings for an address.'),
                     'room' => $nullableString()->description('Room number within the building.'),
                     'workplace' => $nullableString()->description('Workplace abbreviation the room belongs to, e.g. "KIV".'),
                 ])),
@@ -95,7 +95,7 @@ class GetUcitelInfoTool extends Tool
             ]))])->nullable()->description('Study programmes this person guarantees (garant) this academic year. Empty for most people. Null when STAG refused the lookup, so unknown rather than none.'),
             'subjects_year' => $schema->anyOf([$schema->integer()])->nullable()->description('Starting year of the academic year the subjects list covers, e.g. 2026 for 2026/2027. Null when STAG listed no subjects and no year was requested, so the current year is not known from the response.'),
             'subjects' => $schema->anyOf([$schema->array()->items($schema->object([
-                'katedra' => $nullableString()->description('Department abbreviation of the subject, e.g. "KIV". Pass it to get-predmet-info with zkratka.'),
+                'katedra' => $nullableString()->description('Department abbreviation of the subject, e.g. "KIV". Pass it to get-subject with zkratka.'),
                 'zkratka' => $nullableString()->description('Subject abbreviation, e.g. "PC".'),
                 'nazev' => $nullableString()->description('Subject name, in Czech.'),
                 'roles' => $schema->array()->items($schema->object([
@@ -116,6 +116,9 @@ class GetUcitelInfoTool extends Tool
         $validated = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
             'year' => ['nullable', 'integer', 'min:1990', 'max:2100'],
+        ], [
+            'teacher_id' => 'teacher_id is required and must be a positive whole number, e.g. 17098. search-teachers finds it from a name.',
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
         ]);
 
         $teacherId = (int) $validated['teacher_id'];
@@ -124,7 +127,7 @@ class GetUcitelInfoTool extends Tool
         $info = $stag->get('ucitel/getUcitelInfo', ['ucitIdno' => $teacherId]);
 
         if ($info === [] || array_is_list($info)) {
-            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-ucitele to get a valid id.");
+            return Response::error("No teacher found with teacher_id {$teacherId}. Look the person up with search-teachers to get a valid one.");
         }
 
         $card = BusinessCard::fetch($stag, $teacherId);
@@ -170,7 +173,7 @@ class GetUcitelInfoTool extends Tool
      * Passed through verbatim and never normalised: STAG's telefon is free text
      * holding extensions, full numbers, mobiles and even room codes, so any
      * prefixing would invent wrong numbers. The business card's per-line
-     * extensions are left out for the same reason StudyAdvisorTool drops them.
+     * extensions are left out for the same reason GetStudyAdvisorTool drops them.
      *
      * @param  array<string, mixed>  $info
      * @return list<string>
@@ -211,7 +214,7 @@ class GetUcitelInfoTool extends Tool
     }
 
     /**
-     * Same call as StudyAdvisorTool::officeHoursNote(): STAG does hold
+     * Same call as GetStudyAdvisorTool::officeHoursNote(): STAG does hold
      * consultation hours on the business card, but they are recorded rather
      * than observed behaviour. A third of the university writes them off in
      * their own note ("mail me first"), and a stale slot reported as fact

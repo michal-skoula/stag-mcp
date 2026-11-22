@@ -9,7 +9,7 @@ use App\Mcp\Enums\City;
  *
  * STAG has no link between a faculty and a place, so this is a small
  * hand-kept table. It is only ever offered as a suggestion: the saved city
- * narrows `list-budovy` and the room tools, so a wrong one applied silently
+ * narrows `list-buildings` and the room tools, so a wrong one applied silently
  * would hide the right buildings. Nothing reads the suggestion except the
  * onboarding confirmation, which writes the preference once the user agrees.
  *

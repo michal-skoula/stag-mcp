@@ -58,7 +58,7 @@ class ListExamDatesTool extends Tool
             'zkratka' => $schema->string()
                 ->description('Subject code, e.g. "DB1". Exact, case-insensitive. Without katedra it matches that code in every department.'),
             'teacher_id' => $schema->integer()
-                ->description('Examiner\'s ucitIdno, as returned by search-ucitele.'),
+                ->description('Examiner\'s ucitIdno, as returned by search-teachers.'),
             'rok' => $schema->integer()
                 ->description('Academic year as its starting year (2025 = 2025/2026). Defaults to the current one. Combine with include_past for an earlier year.'),
             'semestr' => $schema->string()
@@ -116,7 +116,7 @@ class ListExamDatesTool extends Tool
                         'room' => $nullableString()->description('Room number, e.g. "108".'),
                     ]),
                     'examiner' => $schema->object([
-                        'teacher_id' => $nullableInt()->description('ucitIdno; get-ucitel-info has contact details.'),
+                        'teacher_id' => $nullableInt()->description('ucitIdno; get-teacher has contact details.'),
                         'name' => $nullableString()->description('Name with titles.'),
                     ]),
                     'capacity' => $schema->object([

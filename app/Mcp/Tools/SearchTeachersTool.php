@@ -20,11 +20,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('search-ucitele')]
-#[Title('Search Ucitele')]
-#[Description('Finds teachers and other university staff by name, department, or both. Name matching ignores case, diacritics and word order ("sperlova", "Denisa Šperlová"). Best matches come first. Returns teacher_id, the handle other tools use for a person; pass it to get-ucitel-info for their office, phone and the programmes they guarantee. People flagged active: false are still returned on purpose: STAG marks student demonstrators and doctoral assistants inactive while they run labs, so an inactive match may well be the person the user means. Results are paged; use offset to see more than the first count rows. The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
+#[Name('search-teachers The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
+#[Title('Search teachers The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
+#[Description('Finds teachers and other university staff (učitelé) by name, department or both, and returns each person\'s teacher_id, name with titles, department, email and whether STAG flags them active or an employee. Call it whenever the user names a person ("Herout", "my lab teacher Šperlová") or asks who works in a department. Needs name or department; name matching ignores case, accents and word order. Pass a teacher_id to get-teacher for office, phone and what they teach. Inactive people are returned on purpose: STAG flags student demonstrators and doctoral assistants inactive while they run labs. Best matches first, paged with count and offset. The directory is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy and the list is from retrieved_at, so say it may be out of date.')]
 #[IsReadOnly]
-class SearchUciteleTool extends Tool
+class SearchTeachersTool extends Tool
 {
     use PaginatesResponses;
     use ReportsDataFreshness;
@@ -88,17 +88,26 @@ class SearchUciteleTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
+            /* required_without sits on name only: department's mirror rule
+             * would fail alongside it and repeat the same complaint. */
             'name' => ['nullable', 'string', 'min:2', 'max:100', 'required_without:department'],
-            'department' => ['nullable', 'string', 'regex:/^[\pL\pN-]+$/u', 'max:10', 'required_without:name'],
+            'department' => ['nullable', 'string', 'regex:/^[\pL\pN-]+$/u', 'max:10'],
             'active_only' => ['nullable', 'boolean'],
             'employees_only' => ['nullable', 'boolean'],
             ...$this->paginationRules(),
+        ], [
+            'name.required_without' => 'Pass name, department or both. name is part of a first name or surname, e.g. "novak"; department is a department or faculty code, e.g. "KIV".',
+            'name' => 'name must be 2 to 100 characters of a first name or surname, e.g. "novak" or "Jan Novák".',
+            'department' => 'department must be a department or faculty code of up to 10 letters or digits, e.g. "KIV" or "FAV".',
+            'active_only' => 'active_only must be true or false.',
+            'employees_only' => 'employees_only must be true or false.',
+            ...$this->paginationMessages(),
         ]);
 
         $name = $validated['name'] ?? null;
 
         if ($name !== null && TeacherSearch::tokens($name) === []) {
-            return Response::error('The name has no letters or digits to search by.');
+            return Response::error('name has no letters or digits to search by. Pass part of a first name or surname, e.g. "novak".');
         }
 
         $department = isset($validated['department']) ? mb_strtoupper($validated['department']) : null;

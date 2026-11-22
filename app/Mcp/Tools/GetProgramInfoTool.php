@@ -68,7 +68,7 @@ class GetProgramInfoTool extends Tool
             'areas' => $schema->anyOf([$schema->array()->items($schema->string())])->nullable()->description('Fields of education with their share, e.g. "Informatika (100%)". Null when STAG refused the lookup.'),
             'guarantor' => $schema->anyOf([$schema->object([
                 'name' => $nullableString()->description('Name with titles, surname first.'),
-                'teacher_id' => $schema->integer()->description('ucitIdno. Pass to get-ucitel-info for contact details.'),
+                'teacher_id' => $schema->integer()->description('ucitIdno. Pass to get-teacher for contact details.'),
             ])])->nullable()->description('The programme guarantor (garant).'),
             'about' => $schema->object([
                 'goals' => $nullableString()->description('What the programme aims at (cíle).'),

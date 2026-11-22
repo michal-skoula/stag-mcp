@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\StudyAdvisorTool;
+use App\Mcp\Tools\GetStudyAdvisorTool;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
@@ -102,7 +102,7 @@ it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -112,7 +112,7 @@ it('returns the advisor with their office', function () {
     fakeAdvisor();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertSee('"name":"Sutnerová Petra"')
         ->assertSee('"email":"sutnerov@fav.zcu.cz"')
@@ -125,7 +125,7 @@ it('collapses the repeated directory rows into one office', function () {
     fakeAdvisor();
 
     $response = StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk();
 
     /* Two tsLinky rows for one room must not become two offices. */
@@ -136,7 +136,7 @@ it('drops the phone extensions and the login STAG volunteers', function () {
     fakeAdvisor();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertDontSee('preferovanaLinka')
         ->assertDontSee('preferred_extension')
@@ -151,7 +151,7 @@ it('always points at the faculty website for office hours', function () {
     fakeAdvisor();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         /* Faculty site comes from the advisor's own email domain. */
         ->assertSee('Look on fav.zcu.cz')
@@ -165,7 +165,7 @@ it('never returns office hours from STAG, even when STAG has them', function () 
     ]]]]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertDontSee('13:00')
         ->assertDontSee('Pondělí')
@@ -177,7 +177,7 @@ it('still guides the reader when the advisor has no email to derive a site from'
     fakeAdvisor(studentInfo: ['studReferentkaEmail' => null]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertSee('studijní oddělení')
         ->assertDontSee('Look on ');
@@ -187,7 +187,7 @@ it('looks the business card up by the advisor teacher id', function () {
     fakeAdvisor();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk();
 
     Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getVizitkaByUcitidno')
@@ -202,7 +202,7 @@ it('keeps the contact details when no business card is published', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"phone":"377632010"')
@@ -218,7 +218,7 @@ it('keeps the contact details when the business card is refused', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"name":"Sutnerová Petra"')
@@ -234,20 +234,20 @@ it('returns a null advisor when the study has none recorded', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertOk()
         ->assertSee('"advisor":null');
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getVizitkaByUcitidno'));
 });
 
-it('uses an explicit os_cislo without resolving identity', function () {
+it('uses an explicit student_id without resolving identity', function () {
     fakeAdvisor(studentInfo: ['osCislo' => 'R21P0002P']);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class, ['os_cislo' => 'R21P0002P'])
+        ->tool(GetStudyAdvisorTool::class, ['student_id' => 'R21P0002P'])
         ->assertOk()
-        ->assertSee('"os_cislo":"R21P0002P"');
+        ->assertSee('"student_id":"R21P0002P"');
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getStagUserListForActualUser'));
 });
@@ -258,8 +258,18 @@ it('errors when no osCislo can be resolved', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(StudyAdvisorTool::class)
+        ->tool(GetStudyAdvisorTool::class)
         ->assertHasErrors();
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getStudentInfo'));
+});
+
+it('names the argument and what it accepts when student_id is not text', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetStudyAdvisorTool::class, ['student_id' => 12345])
+        ->assertHasErrors(['student_id must be a personal number as text, e.g. "A21B0123P".']);
+
+    Http::assertNothingSent();
 });

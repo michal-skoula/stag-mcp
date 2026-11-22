@@ -156,7 +156,7 @@ final readonly class ExamTerm
 
     /**
      * The embedded `ucitel` row carries email, phone and office too; only the
-     * id and name travel, since get-ucitel-info answers the rest.
+     * id and name travel, since get-teacher answers the rest.
      *
      * @return array{teacher_id: ?int, name: ?string}
      */

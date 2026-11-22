@@ -21,11 +21,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-harmonogram')]
-#[Title('Get Harmonogram')]
-#[Description("Academic year milestones: start/end of semesters, exam periods, and teaching-free days. Use get-kalendar for the caller's actual timetable on a given date. The harmonogram is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy of it, so say it may be out of date.")]
+#[Name('get-academic-calendar')]
+#[Title('Get academic calendar')]
+#[Description("The academic year's schedule (harmonogram): when each semester, teaching period and exam period starts and ends, teaching-free days, and which period STAG considers current. Call it for \"when does the exam period start\", \"when is the last teaching day\" or \"is it the winter semester yet\". year defaults to the current academic year. For the caller's own classes on given dates, use get-timetable. The harmonogram is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy of it, so say it may be out of date.")]
 #[IsReadOnly]
-class GetHarmonogramTool extends Tool
+class GetAcademicCalendarTool extends Tool
 {
     use ReportsDataFreshness;
 
@@ -37,8 +37,12 @@ class GetHarmonogramTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'year' => $schema->string()
-                ->description('Academic year as its starting year, four digits, e.g. "2026" for 2026/2027. Defaults to the current STAG academic year when omitted.'),
+            /*
+             * Accepts a number as well as a string: the year reads
+             * as numeric, and clients send 2025 as often as "2025".
+             */
+            'year' => $schema->anyOf([$schema->string(), $schema->integer()])
+                ->description('Academic year as its starting year: 2025 means 2025/2026. Defaults to the current academic year.'),
         ];
     }
 
@@ -82,7 +86,9 @@ class GetHarmonogramTool extends Tool
         }
 
         $validated = $request->validate([
-            'year' => ['nullable', 'string', 'regex:/^\d{4}$/'],
+            'year' => ['integer', 'min:1990', 'max:2100', 'nullable'],
+        ], [
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
         ]);
 
         $stag = new StagHttpClient($user);
@@ -98,7 +104,7 @@ class GetHarmonogramTool extends Tool
              * The harmonogram is the cached half; getAktualniObdobiInfo is not,
              * since it answers "right now".
              */
-            $year = $validated['year'] ?? $obdobi['akademRok'] ?? $this->currentAcademicYear();
+            $year = isset($validated['year']) ? (string) $validated['year'] : ($obdobi['akademRok'] ?? $this->currentAcademicYear());
             $harmonogram = (new ReferenceData($stag))->harmonogram($year);
         } catch (StagException $e) {
             return Response::error($e->getMessage());

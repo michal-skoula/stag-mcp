@@ -17,8 +17,8 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 
 #[Name('mark-notifications-read')]
-#[Title('Mark Notifications Read')]
-#[Description('Marks one or more STAG notifications as read. Get the ids from the list-notifications tool.')]
+#[Title('Mark notifications read')]
+#[Description('Marks STAG notifications (oznámení) as read, the same as opening them in the portal. Call it once the user has seen them, or asks to clear them. Needs notification_ids, the id of each notification as list-notifications returns it. Marking one that is already read is harmless.')]
 #[IsIdempotent]
 class MarkNotificationsReadTool extends Tool
 {
@@ -32,8 +32,8 @@ class MarkNotificationsReadTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'ids' => $schema->array()
-                ->description('STAG notification ids to mark as read, as returned by the list-notifications tool.')
+            'notification_ids' => $schema->array()
+                ->description('Ids of the notifications to mark as read, from list-notifications.')
                 ->items($schema->integer())
                 ->min(1)
                 ->required(),
@@ -48,7 +48,7 @@ class MarkNotificationsReadTool extends Tool
         return [
             'count' => $schema->integer()
                 ->description('How many notifications were marked as read.'),
-            'ids' => $schema->array()
+            'notification_ids' => $schema->array()
                 ->description('The ids STAG accepted.')
                 ->items($schema->integer()),
         ];
@@ -62,18 +62,21 @@ class MarkNotificationsReadTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
-            'ids' => ['required', 'array', 'min:1'],
-            'ids.*' => ['integer'],
+            'notification_ids' => ['required', 'array', 'min:1'],
+            'notification_ids.*' => ['integer'],
+        ], [
+            'notification_ids' => 'notification_ids is required and must be a list of at least one notification id from list-notifications, e.g. [123456].',
+            'notification_ids.*.integer' => 'Every entry in notification_ids must be a whole-number notification id from list-notifications.',
         ]);
 
-        $ids = array_values(array_unique(array_map(intval(...), $validated['ids'])));
+        $ids = array_values(array_unique(array_map(intval(...), $validated['notification_ids'])));
 
         $stag->put('oznameni/precteno', ['notiIdno' => $ids]);
 
         // Getting here means STAG accepted the call; every failure path throws.
         return Response::structured([
             'count' => count($ids),
-            'ids' => $ids,
+            'notification_ids' => $ids,
         ]);
     }
 }

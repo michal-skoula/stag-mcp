@@ -21,14 +21,16 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('get-znamky')]
-#[Title('Get Znamky')]
-#[Description("The caller's grades and study progress: per subject the exam and zápočet outcome, attempt count, date, examiner and credits, plus a summary with credits earned and the weighted average. Defaults to the current semester, so it answers \"what have I done and what is still open\" without arguments; pass all_years for the whole degree. Subject status comes from STAG's own completion code, not from the grade, because a zápočet-only subject has no numeric grade and an unfinished one is sometimes recorded as a 4.")]
+#[Name('get-grades')]
+#[Title('Get grades')]
+#[Description("The caller's grades (známky) and study progress: per subject the exam and zápočet result, attempt, date, examiner and credits, plus credits earned and the weighted average. Call it for \"how am I doing\", \"what is still open\" or \"what is my average\". Takes no arguments for the current semester; pass year and semester for another one, or all_years for the whole degree. A subject's status comes from STAG's completion code, not the grade, because a zápočet-only subject has no number and an unfinished one is sometimes recorded as a 4.")]
 #[IsReadOnly]
-class GetZnamkyTool extends Tool
+class GetGradesTool extends Tool
 {
     use RequiresStagLogin;
     use ResolvesStagIdentity;
+
+    private const array SEMESTERS = ['winter', 'summer', 'both'];
 
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fznamky
     // Docs: https://stag-ws.zcu.cz/ws/web?pp_locale=en&selectedTyp=REST&pp_reqType=render&pp_page=serviceList&addr=%2Fservices%2Frest2%2Fstudent
@@ -43,24 +45,19 @@ class GetZnamkyTool extends Tool
              * Accepts a number as well as a string: the year reads
              * as numeric, and clients send 2025 as often as "2025".
              */
-            'rok' => $schema->anyOf([$schema->string(), $schema->integer()])
-                ->description('Academic year to show, given as its starting year: 2025 means 2025/2026. Defaults to the current academic year. Ignored when all_years is true.'),
-            /*
-             * Accepts "" as an alias for "%": an agent that leaves the field
-             * blank rather than typing the wildcard should still get both.
-             */
-            // todo: replace enum with winter, summer, both, default to both, remove empty state since now we have a default.
-            'semestr' => $schema->string()->enum(['ZS', 'LS', '%', ''])
-                ->description('Semester to show: "ZS" (winter), "LS" (summer), "%" or "" for both. Defaults to the semester the current date falls in. Ignored when all_years is true.'),
+            'year' => $schema->anyOf([$schema->string(), $schema->integer()])
+                ->description('Academic year as its starting year: 2025 means 2025/2026. Defaults to the current academic year. Ignored when all_years is true.'),
+            'semester' => $schema->string()->enum(self::SEMESTERS)
+                ->description('"winter", "summer" or "both". Defaults to the semester today falls in. Ignored when all_years is true.'),
             'all_years' => $schema->boolean()
-                ->description('Return the entire study history instead of one semester, ignoring rok and semestr. Use for questions about the whole degree.')
+                ->description('Return the whole study history instead of one semester, ignoring year and semester. Use for questions about the whole degree.')
                 ->default(false),
-            'katedra' => $schema->string()
+            'department' => $schema->string()
                 ->description('Only subjects whose department contains this, case-insensitive, e.g. "KIV".'),
-            'zkratka' => $schema->string()
+            'code' => $schema->string()
                 ->description('Only subjects whose code contains this, case-insensitive, e.g. "MA1".'),
-            'os_cislo' => $schema->string()
-                ->description('Personal number (osCislo) to fetch grades for, for accounts holding more than one STAG role. Resolved automatically when omitted; call who-am-i to see the roles an account holds.'),
+            'student_id' => $schema->string()
+                ->description('Personal number (osCislo) of the study to read, for accounts with more than one student role. Found automatically when left out; get-profile lists the roles.'),
         ];
     }
 
@@ -95,15 +92,13 @@ class GetZnamkyTool extends Tool
             'attempt' => $nullableInt()->description('Which attempt this outcome is from. 0 when nothing has been attempted.'),
             'date' => $nullableString()->description('ISO date of the outcome, or null.'),
             'teacher' => $nullableString()->description('Who recorded it, "Surname Forename" as STAG stores it. Null when not graded yet.'),
-            'teacher_id' => $nullableInt()->description('ucitIdno of that teacher, for cross-referencing the ucitel namespace.'),
-            // todo: this is pointless; remove
-            'language' => $nullableString()->description('Language the assessment was taken in, e.g. "CZ". Null when not applicable.'),
+            'teacher_id' => $nullableInt()->description('teacher_id of that teacher, for get-teacher.'),
         ])])->nullable()->description($description);
 
         return [
-            'os_cislo' => $schema->string()->description('The osCislo these grades were fetched for.'),
-            'rok' => $nullableString()->description('Academic year filtered to, or null when all_years is set.'),
-            'semestr' => $nullableString()->description('Semester filtered to, or null when all_years is set.'),
+            'student_id' => $schema->string()->description('The student_id these grades were fetched for.'),
+            'year' => $nullableString()->description('Academic year filtered to, e.g. "2025/2026", or null when all_years is set.'),
+            'semester' => $nullableString()->description('Semester filtered to, "winter", "summer" or "both", or null when all_years is set.'),
             'all_years' => $schema->boolean()->description('Whether the whole study history was returned.'),
             'total' => $schema->integer()->description('Total matching subjects.'),
             'summary' => $schema->object([
@@ -121,19 +116,19 @@ class GetZnamkyTool extends Tool
             'subjects' => $schema->array()
                 ->description('Matching subjects, newest first.')
                 ->items($schema->object([
-                    'katedra' => $schema->string()->description('Department abbreviation.'),
-                    'zkratka' => $schema->string()->description('Subject abbreviation.'),
-                    'nazev' => $nullableString()->description('Subject name, or null when STAG does not list this enrolment.'),
-                    'kredity' => $nullableInt()->description('Credit value, or null when STAG does not list this enrolment.'),
-                    'rok' => $schema->string()->description('Academic year, as its starting year.'),
-                    'semestr' => $schema->string()->description('Semester, "ZS" or "LS".'),
+                    'department' => $schema->string()->description('Department abbreviation.'),
+                    'code' => $schema->string()->description('Subject code within the department.'),
+                    'name' => $nullableString()->description('Subject name, or null when STAG does not list this enrolment.'),
+                    'credits' => $nullableInt()->description('Credit value, or null when STAG does not list this enrolment.'),
+                    'year' => $schema->string()->description('Academic year, as its starting year.'),
+                    'semester' => $schema->string()->description('"winter" or "summer".'),
                     'status' => $schema->object([
                         'type' => $schema->string()->description('passed, failed, in_progress, recognised, transferred, deferred, enrolled_next_year, or unknown.'),
                         'code' => $schema->string()->description("STAG's raw stavAbsolvovani code, always present even when type is unknown."),
                         'label' => $nullableString()->description("STAG's own Czech description of the code, or null for an unrecognised one."),
-                        'superseded_by' => $nullableString()->description('When this failed enrolment was later retaken and passed, the year/semester that superseded it, e.g. "2026/ZS". Null otherwise.'),
+                        'superseded_by' => $nullableString()->description('When this failed enrolment was later retaken and passed, the year and semester that superseded it, e.g. "2026 winter". Null otherwise.'),
                     ]),
-                    'zkouska' => $assessment('The exam, or the sole assessment on a zápočet-only subject. Null when STAG records none.'),
+                    'exam' => $assessment('The exam, or the sole assessment on a zápočet-only subject. Null when STAG records none.'),
                     'zapocet' => $assessment('The zápočet taken before the exam, on subjects that require one. Null otherwise.'),
                 ])),
         ];
@@ -149,44 +144,51 @@ class GetZnamkyTool extends Tool
         $validated = $request->validate([
             /* A wrong year silently returns nothing upstream, so reject one
              * that cannot be a year rather than reporting an empty record. */
-            'rok' => ['integer', 'min:1900', 'max:2200', 'nullable'],
-            /*
-             * Same reasoning as rok: a garbage semestr returns an empty result
-             * upstream rather than an error, so it is rejected here instead.
-             * "" is accepted deliberately, as an alias for "%".
-             */
-            'semestr' => ['string', Rule::in(['ZS', 'LS', '%', '']), 'nullable'],
+            'year' => ['integer', 'min:1990', 'max:2100', 'nullable'],
+            /* Same reasoning as year: a garbage semester returns an empty
+             * result upstream rather than an error. */
+            'semester' => ['string', Rule::in(self::SEMESTERS), 'nullable'],
             'all_years' => ['boolean', 'nullable'],
-            'katedra' => ['string', 'nullable'],
-            'zkratka' => ['string', 'nullable'],
-            'os_cislo' => ['string', 'nullable'],
+            'department' => ['string', 'nullable'],
+            'code' => ['string', 'nullable'],
+            'student_id' => ['string', 'nullable'],
+        ], [
+            'year' => 'year must be an academic year as its starting year, e.g. 2025 for 2025/2026.',
+            'semester' => 'semester must be "winter", "summer" or "both".',
+            'all_years' => 'all_years must be true or false.',
+            'department' => 'department must be a department abbreviation or part of one, e.g. "KIV".',
+            'code' => 'code must be a subject code or part of one, e.g. "MA1".',
+            'student_id' => 'student_id must be a personal number as text, e.g. "A21B0123P". get-profile lists the account\'s own.',
         ]);
 
-        $osCislo = $validated['os_cislo'] ?? $this->resolveOsCislo($stag);
+        $osCislo = $validated['student_id'] ?? $this->resolveOsCislo($stag);
 
         if ($osCislo === null) {
-            return Response::error('Could not resolve an osCislo for this account. Pass os_cislo explicitly.');
+            return Response::error('Could not find a student_id for this account. Pass student_id explicitly; get-profile lists the account\'s roles.');
         }
 
         $allYears = $validated['all_years'] ?? false;
         $today = Carbon::today();
-        $semestrInput = $validated['semestr'] ?? null;
-        $semestrInput = $semestrInput === '' ? '%' : $semestrInput;
-        $rok = $allYears ? null : (string) ($validated['rok'] ?? $this->academicYearFor($today));
-        $semestr = $allYears ? null : ($semestrInput ?? $this->semesterFor($today));
+        $rok = $allYears ? null : (string) ($validated['year'] ?? $this->academicYearFor($today));
+        $semestr = $allYears ? null : match ($validated['semester'] ?? null) {
+            'winter' => 'ZS',
+            'summer' => 'LS',
+            'both' => '%',
+            default => $this->semesterFor($today),
+        };
 
         $record = (new StudyRecordService($stag))->getRecordForStudent($osCislo);
 
         if ($record->isEmpty()) {
-            return Response::error("STAG returned no subjects for osCislo '{$osCislo}'. An osCislo that is not the one this ticket belongs to comes back empty rather than as an error, so check it if you passed it explicitly.");
+            return Response::error("STAG returned no subjects for student_id '{$osCislo}'. A student_id that is not this account's own comes back empty rather than as an error, so check it if you passed one.");
         }
 
-        $matching = $record->filter($rok, $semestr, $validated['katedra'] ?? null, $validated['zkratka'] ?? null);
+        $matching = $record->filter($rok, $semestr, $validated['department'] ?? null, $validated['code'] ?? null);
 
         return Response::structured([
-            'os_cislo' => $osCislo,
-            'rok' => is_numeric($rok) ? $rok.'/'.(int) $rok + 1 : null,
-            'semestr' => $semestr,
+            'student_id' => $osCislo,
+            'year' => is_numeric($rok) ? $rok.'/'.(int) $rok + 1 : null,
+            'semester' => $semestr === null ? null : ($semestr === '%' ? 'both' : Subject::semesterName($semestr)),
             'all_years' => $allYears,
             'total' => $matching->count(),
             'summary' => $matching->summary(),

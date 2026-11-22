@@ -45,7 +45,7 @@ it('supersedes an earlier failure once the subject is retaken and passed', funct
 
     $earlier = collect($record->subjects())->firstWhere('rok', '2025');
 
-    expect($earlier->toArray()['status']['superseded_by'])->toBe('2026/ZS')
+    expect($earlier->toArray()['status']['superseded_by'])->toBe('2026 winter')
         ->and($record->summary()['retaken'])->toBe(1);
 });
 
@@ -73,7 +73,7 @@ it('supersedes an earlier failure when the retake is recognised rather than pass
 
     $earlier = collect($record->subjects())->firstWhere('rok', '2025');
 
-    expect($earlier->toArray()['status']['superseded_by'])->toBe('2026/ZS');
+    expect($earlier->toArray()['status']['superseded_by'])->toBe('2026 winter');
 });
 
 it("reproduces the printed transcript's weighted average of 2.05", function () {
@@ -195,7 +195,7 @@ it('keeps a superseded flag intact after filtering to a narrower year', function
     // the flag was computed over the full history before filtering.
     $ma1 = collect($narrowed->subjects())->first(fn ($s) => $s->zkratka === 'MA1');
 
-    expect($ma1->toArray()['status']['superseded_by'])->toBe('2026/ZS');
+    expect($ma1->toArray()['status']['superseded_by'])->toBe('2026 winter');
 });
 
 it('recomputes the summary over only the filtered subjects', function () {

@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\StagMcpServer;
-use App\Mcp\Tools\GetKalendarTool;
+use App\Mcp\Tools\GetTimetableTool;
 use App\Models\User;
 use App\Services\Stag\ReferenceData;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
@@ -245,7 +245,7 @@ it('refuses a caller with no STAG ticket', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetKalendarTool::class)
+        ->tool(GetTimetableTool::class)
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -254,7 +254,7 @@ it('refuses a caller with no STAG ticket', function () {
 it('errors when there is no authenticated user', function () {
     Http::fake();
 
-    StagMcpServer::tool(GetKalendarTool::class)
+    StagMcpServer::tool(GetTimetableTool::class)
         ->assertHasErrors()
         ->assertSee('must send a bearer token');
 
@@ -269,7 +269,7 @@ it('resolves osCislo via getStagUserListForActualUser when not given', function 
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
         ->assertOk();
 
     Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getStagUserListForActualUser'));
@@ -277,17 +277,17 @@ it('resolves osCislo via getStagUserListForActualUser when not given', function 
         && $request['osCislo'] === 'A25B0093P');
 });
 
-it('skips osCislo resolution when os_cislo is given explicitly', function () {
+it('skips osCislo resolution when student_id is given explicitly', function () {
     Http::fake([
         STAG_GET_ROZVRH_BY_STUDENT => Http::response(['rozvrhovaAkce' => []]),
         STAG_GET_KALENDAR_ROKU => Http::response(['kalendarItem' => stagKalendarWeek46()]),
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, [
+        ->tool(GetTimetableTool::class, [
             'date_from' => '2026-11-09',
             'date_to' => '2026-11-13',
-            'os_cislo' => 'B20B9999P',
+            'student_id' => 'B20B9999P',
         ])
         ->assertOk();
 
@@ -302,9 +302,9 @@ it('errors when no osCislo can be resolved and none was given', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class)
+        ->tool(GetTimetableTool::class)
         ->assertHasErrors()
-        ->assertSee('Could not resolve an osCislo');
+        ->assertSee('Could not find a student_id for this account');
 
     Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'getRozvrhByStudent'));
 });
@@ -317,7 +317,7 @@ it('sends datumOd and datumDo as d.n.Y, not ISO', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
         ->assertOk();
 
     Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'getRozvrhByStudent')
@@ -336,7 +336,7 @@ it('keeps a Svátek day\'s real weekday and nulls timetable_day', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-10-28', 'date_to' => '2026-10-28'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-10-28', 'date_to' => '2026-10-28'])
         ->assertOk()
         ->assertSee('"weekday":"Wednesday"')
         ->assertSee('"timetable_day":null')
@@ -353,7 +353,7 @@ it('marks a Rektorský den as non-teaching with no events, even without include_
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'])
         ->assertOk()
         ->assertSee('"date":"2026-11-10"')
         ->assertSee('"teaching":false')
@@ -372,7 +372,7 @@ it('reads timetable_week per day rather than deriving it from week_number', func
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, [
+        ->tool(GetTimetableTool::class, [
             'date_from' => '2026-12-21',
             'date_to' => '2026-12-23',
             'include_empty_days' => true,
@@ -393,11 +393,11 @@ it('maps exam occurrences to kind exam', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
         ->assertOk()
         ->assertSee('"kind":"exam"')
         ->assertSee('"type":"Zkouška"')
-        ->assertSee('"katedra":"KIV","zkratka":"DB1"');
+        ->assertSee('"department":"KIV","code":"DB1"');
 });
 
 it('hands over the teacher_id of an exam, which has no roakIdno, without extra STAG calls', function () {
@@ -410,7 +410,7 @@ it('hands over the teacher_id of an exam, which has no roakIdno, without extra S
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-01-19', 'date_to' => '2026-01-19'])
         ->assertOk()
         ->assertSee('"teachers":[{"teacher_id":17895,"name":"Ing. Martin Zíma, Ph.D."}]')
         ->assertSee('"teacher_id":241911')
@@ -431,7 +431,7 @@ it('splits a multi-teacher list without breaking on a comma inside a title', fun
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
         ->assertOk()
         ->assertSee('"teachers":[{"teacher_id":54539,"name":"Ing. Ladislav Pešička, Ph.D."},{"teacher_id":294708,"name":"Daniel Rössner"}]');
 });
@@ -446,7 +446,7 @@ it('strips the leading date from nekonaSe, keeps the structured room even when t
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2025-11-28', 'date_to' => '2025-11-28'])
         ->assertOk()
         ->assertSee('"note":"Koná se (proběhne v EP120)"')
         ->assertSee('"room":"217"')
@@ -462,7 +462,7 @@ it('fetches getKalendarRoku once per academic year the range touches', function 
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2027-08-28', 'date_to' => '2027-09-03'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2027-08-28', 'date_to' => '2027-09-03'])
         ->assertOk();
 
     $kalendarRequests = Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku'));
@@ -483,7 +483,7 @@ it('defaults to today through today plus 13 days', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class)
+        ->tool(GetTimetableTool::class)
         ->assertOk()
         ->assertSee('"date_from":"2026-11-09"')
         ->assertSee('"date_to":"2026-11-22"');
@@ -501,7 +501,7 @@ it('omits an ordinary teaching day with no events unless include_empty_days is s
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-11', 'date_to' => '2026-11-11'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-11', 'date_to' => '2026-11-11'])
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0')
@@ -518,7 +518,7 @@ it('includes an ordinary teaching day with no events when include_empty_days is 
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, [
+        ->tool(GetTimetableTool::class, [
             'date_from' => '2026-11-11',
             'date_to' => '2026-11-11',
             'include_empty_days' => true,
@@ -544,7 +544,7 @@ it('defaults to the first 100 days over a long, fully-teaching range', function 
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, [
+        ->tool(GetTimetableTool::class, [
             'date_from' => '2026-09-01',
             'date_to' => '2027-01-28',
             'include_empty_days' => true,
@@ -572,7 +572,7 @@ it('honours a custom count and offset over days', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, [
+        ->tool(GetTimetableTool::class, [
             'date_from' => '2026-09-01',
             'date_to' => '2026-09-10',
             'include_empty_days' => true,
@@ -592,8 +592,8 @@ it('rejects a count above the maximum without calling STAG', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['count' => 501])
-        ->assertHasErrors();
+        ->tool(GetTimetableTool::class, ['count' => 501])
+        ->assertHasErrors(['count must be a whole number from 1 to 500.']);
 
     Http::assertNothingSent();
 });
@@ -602,7 +602,7 @@ it('rejects a range spanning more than the maximum days without calling STAG', f
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-01-01', 'date_to' => '2027-06-01'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-01-01', 'date_to' => '2027-06-01'])
         ->assertHasErrors();
 
     Http::assertNothingSent();
@@ -612,8 +612,8 @@ it('rejects date_from after date_to without calling STAG', function () {
     Http::fake();
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-13', 'date_to' => '2026-11-09'])
-        ->assertHasErrors();
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-13', 'date_to' => '2026-11-09'])
+        ->assertHasErrors(['date_from must be on or before date_to.']);
 
     Http::assertNothingSent();
 });
@@ -628,7 +628,7 @@ it('handles an empty result without erroring', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->withStagToken()->create())
-        ->tool(GetKalendarTool::class, ['date_from' => '2026-11-11', 'date_to' => '2026-11-11'])
+        ->tool(GetTimetableTool::class, ['date_from' => '2026-11-11', 'date_to' => '2026-11-11'])
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0')
@@ -636,7 +636,7 @@ it('handles an empty result without erroring', function () {
 });
 
 it('names days in the pagination descriptions', function () {
-    $tool = new GetKalendarTool;
+    $tool = new GetTimetableTool;
     $input = $tool->schema(new JsonSchemaTypeFactory);
     $output = $tool->outputSchema(new JsonSchemaTypeFactory);
 
@@ -644,6 +644,16 @@ it('names days in the pagination descriptions', function () {
         ->and($input['offset']->toArray()['description'])->toContain('days')
         ->and($output['total']->toArray()['description'])->toContain('days')
         ->and($output['count']->toArray()['description'])->toContain('days');
+});
+
+it('names the argument and the format it accepts when a date is malformed', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->withStagToken()->create())
+        ->tool(GetTimetableTool::class, ['date_from' => '9.11.2026'])
+        ->assertHasErrors(['date_from must be a date as YYYY-MM-DD, e.g. 2026-11-09.']);
+
+    Http::assertNothingSent();
 });
 
 it('caches the academic calendar but never the timetable', function () {
@@ -655,8 +665,8 @@ it('caches the academic calendar but never the timetable', function () {
     $user = User::factory()->withStagToken()->create();
     $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
 
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)
         ->assertOk()
         ->assertSee("Rector's day")
         ->assertSee('"using_outdated_data":false');
@@ -676,10 +686,10 @@ it('keeps the calendar annotations and flags them when STAG fails after expiry',
     $user = User::factory()->withStagToken()->create(['stag_token_valid_until' => now()->addYear()]);
     $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
 
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
     $this->travel(ReferenceData::CALENDAR_TTL_SECONDS + 1)->seconds();
 
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee("Rector's day")
@@ -695,8 +705,8 @@ it('does not keep an empty calendar year', function () {
     $user = User::factory()->withStagToken()->create();
     $params = ['date_from' => '2026-11-09', 'date_to' => '2026-11-13'];
 
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
-    StagMcpServer::actingAs($user)->tool(GetKalendarTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
+    StagMcpServer::actingAs($user)->tool(GetTimetableTool::class, $params)->assertOk();
 
     expect(Http::recorded(fn ($request) => str_contains((string) $request->url(), 'getKalendarRoku')))->toHaveCount(2);
 });

@@ -7,7 +7,7 @@ namespace App\Mcp\Enums;
  *
  * Deliberately not enforced anywhere: STAG can add a city without a source
  * change here, so this exists to make tool schemas self-documenting, not to
- * validate input. See GetBudovyTool's `city` filter.
+ * validate input. See ListBuildingsTool's `city` filter.
  */
 enum City: string
 {

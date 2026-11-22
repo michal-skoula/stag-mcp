@@ -112,7 +112,7 @@ trait DescribesStudyPlans
         $nullableInteger = fn () => $schema->anyOf([$schema->integer()])->nullable();
 
         return [
-            'code' => $schema->string()->description('Department and subject code, e.g. "KIV/PPA". Pass the two halves to get-predmet-info for detail.'),
+            'code' => $schema->string()->description('Department and subject code, e.g. "KIV/PPA". Pass the two halves to get-subject for detail.'),
             'name' => $nullableString()->description('Subject name in Czech.'),
             'credits' => $schema->integer()->description('ECTS credits. 0 for final and state exams.'),
             'exam_type' => $nullableString()->description('How it is finished, e.g. "exam (zkouška)", "credit (zápočet)", "final exam (závěrečná zkouška)".'),

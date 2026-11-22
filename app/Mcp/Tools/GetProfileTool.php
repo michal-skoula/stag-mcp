@@ -17,11 +17,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('who-am-i')]
-#[Title('Who Am I')]
-#[Description('Who the caller is in STAG: name, email, and one entry per role the account holds. A student role carries the study programme, year, form and state (use get-study-advisor for the referentka); a teaching role carries the department and contact details. One account can hold several roles at once, each with its own personal number, so this is how to find the os_cislo that get-znamky and get-kalendar accept. Takes no arguments - it always describes the account behind the ticket.')]
+#[Name('get-profile')]
+#[Title('Get profile')]
+#[Description('Who the caller is in STAG: name, email and every role the account holds. A student role carries its student_id (osCislo), programme, year of study, form and state; a teaching role carries its teacher_id, department and contact details. Call it when the user asks about themselves ("what am I studying", "which year am I in"), or to find the student_id when an account has more than one study. Takes no arguments. For the study advisor, use get-study-advisor.')]
 #[IsReadOnly]
-class WhoAmITool extends Tool
+class GetProfileTool extends Tool
 {
     use RequiresStagLogin;
 
@@ -52,8 +52,8 @@ class WhoAmITool extends Tool
             'name' => $schema->object([
                 'first' => $nullableString()->description('Given name.'),
                 'last' => $nullableString()->description('Surname, as STAG stores it (often all caps).'),
-                'title_before' => $nullableString()->description('Titles before the name, e.g. "JUDr.".'),
-                'title_after' => $nullableString()->description('Titles after the name, e.g. "Ph.D.".'),
+                'titles_before' => $nullableString()->description('Titles before the name, e.g. "JUDr.".'),
+                'titles_after' => $nullableString()->description('Titles after the name, e.g. "Ph.D.".'),
                 'full' => $schema->string()->description('Titles and name joined for display.'),
             ])->description('The person behind the account. The same for every role.'),
             'email' => $nullableString()->description('Primary contact address on the account. A role may carry a different one.'),
@@ -62,19 +62,19 @@ class WhoAmITool extends Tool
                     'role' => $nullableString()->description('Role code, e.g. "ST" (student) or "VY" (teacher).'),
                     'role_name' => $nullableString()->description("STAG's Czech name for the role."),
                     'user_name' => $nullableString()->description('Login this role is held under.'),
-                    'fakulta' => $nullableString()->description('Faculty abbreviation, e.g. "FAV".'),
-                    'katedra' => $nullableString()->description('Department abbreviation, set for teaching roles.'),
-                    'os_cislo' => $nullableString()->description('Personal number. Set for student roles; pass it to get-znamky or get-kalendar.'),
-                    'ucit_idno' => $nullableInt()->description('Teacher id. Set for teaching roles.'),
+                    'faculty' => $nullableString()->description('Faculty abbreviation, e.g. "FAV".'),
+                    'department' => $nullableString()->description('Department abbreviation, set for teaching roles.'),
+                    'student_id' => $nullableString()->description('Personal number (osCislo). Set for student roles; pass it as student_id to get-grades, get-timetable or get-study-advisor.'),
+                    'teacher_id' => $nullableInt()->description('Teacher id (ucitIdno). Set for teaching roles; pass it to get-teacher.'),
                     'email' => $nullableString()->description('Address for this role specifically.'),
                     'student' => $schema->anyOf([$schema->object([
-                        'os_cislo' => $schema->string()->description('Personal number this study is recorded under.'),
+                        'student_id' => $schema->string()->description('Personal number (osCislo) this study is recorded under.'),
                         'orion_login' => $nullableString()->description('University-wide (Orion) login.'),
                         'email' => $nullableString()->description('School address for this study.'),
                         'state' => $nullableString()->description('Whether the study is running: "studying", "interrupted" or "not studying".'),
                         'form' => $nullableString()->description('How the study is attended: "full-time", "combined" or "distance".'),
                         'type' => $nullableString()->description('Degree level: "bachelor", "follow-up master", "master" or "doctoral".'),
-                        'rocnik' => $nullableString()->description('Year of study, as STAG sends it (a quoted number).'),
+                        'year_of_study' => $nullableString()->description('Year of study, as STAG sends it (a quoted number, e.g. "2").'),
                         'programme' => $schema->object([
                             'name' => $nullableString()->description('Programme name. Czech only; STAG ignores lang on this endpoint.'),
                             'code' => $nullableString()->description('Accreditation code, e.g. "B0613A140037".'),
@@ -85,18 +85,19 @@ class WhoAmITool extends Tool
                         ])->description('The study programme being read.'),
                     ])])->description('Study detail, present on student roles only.')->nullable(),
                     'teacher' => $schema->anyOf([$schema->object([
-                        'ucit_idno' => $schema->integer()->description('Teacher id.'),
-                        'katedra' => $nullableString()->description('Home department.'),
-                        'pracoviste_dalsi' => $nullableString()->description('Further workplaces.'),
+                        'teacher_id' => $schema->integer()->description('Teacher id (ucitIdno).'),
+                        'department' => $nullableString()->description('Home department code.'),
+                        'other_department' => $nullableString()->description('Further workplace codes, comma-separated.'),
                         'email' => $nullableString()->description('Work email.'),
-                        'telefon' => $nullableString()->description('Work phone.'),
-                        'telefon2' => $nullableString()->description('Second work phone.'),
-                        'url' => $nullableString()->description('Personal page.'),
-                        'zkr_budovy' => $nullableString()->description('Office building abbreviation.'),
-                        'cislo_mistnosti' => $nullableString()->description('Office room number.'),
-                        'platnost' => $nullableBool()->description('Whether the record is current.'),
-                        'zamestnanec' => $nullableBool()->description('Whether this person is an employee.'),
-                        'phd_skolitel' => $nullableBool()->description('Whether this person supervises doctoral students.'),
+                        'phones' => $schema->array()->items($schema->string())->description('Work phones exactly as STAG stores them, a free-text field. Usually empty.'),
+                        'website' => $nullableString()->description('Personal web page.'),
+                        'office' => $schema->object([
+                            'building' => $nullableString()->description('Building abbreviation, e.g. "UC". list-buildings turns it into an address.'),
+                            'room' => $nullableString()->description('Room number within the building.'),
+                        ])->description('Office as STAG records it on the teacher record.'),
+                        'active' => $nullableBool()->description('STAG\'s platnost flag: whether the record is current.'),
+                        'employee' => $nullableBool()->description('Whether this person is a university employee.'),
+                        'phd_supervisor' => $nullableBool()->description('Whether this person supervises doctoral students.'),
                     ])])->description('Teaching detail, present on teaching roles only.')->nullable(),
                 ])),
         ];

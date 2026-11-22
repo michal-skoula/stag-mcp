@@ -21,11 +21,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Name('list-budovy')]
-#[Title('List Budovy')]
-#[Description('Lists buildings known to STAG, with address and GPS coordinates. Unfiltered this is 80+ buildings - pass city, campus, or address to narrow it down. The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
+#[Name('list-buildings The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
+#[Title('List buildings The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
+#[Description('University buildings (budovy): abbreviation, campus, street address, coordinates and a directions link. Call it to turn a building code such as "UC" into an address, or to see what is on a campus. Every filter is optional, and city defaults to the user\'s saved city; unfiltered there are 80+ buildings, so narrow by city, campus or address where you can. The list is cached; if using_outdated_data is true, STAG could not be reached for a fresh copy, but buildings rarely change.')]
 #[IsReadOnly]
-class GetBudovyTool extends Tool
+class ListBuildingsTool extends Tool
 {
     use ReportsDataFreshness;
 
@@ -42,7 +42,7 @@ class GetBudovyTool extends Tool
         $city = auth('sanctum')->user()?->preferences?->city;
 
         $cityDescription = 'Filter by city. Known values: '.implode(', ', City::values())
-            .'. Not validated — any string is matched as-is in case STAG adds a new city.';
+            .'. Any other city is matched as given, in case STAG adds one.';
 
         if ($city !== null) {
             $cityDescription .= " Defaults to '{$city}' from user preference.";
@@ -51,7 +51,7 @@ class GetBudovyTool extends Tool
         return [
             'city' => $schema->string()->description($cityDescription),
             'campus' => $schema->string()
-                ->description('Filter by campus or part of town. Accepts a name ('.implode(', ', Location::labels()).') or its raw STAG code ('.implode(', ', Location::values()).'). Names match without regard to case or accents. Not validated — any string is matched.'),
+                ->description('Filter by campus or part of town. Accepts a name ('.implode(', ', Location::labels()).') or its raw STAG code ('.implode(', ', Location::values()).'). Names match without regard to case or accents.'),
             'address' => $schema->string()
                 ->description('Case-insensitive substring match against the street, house number, and city.'),
         ];
@@ -64,7 +64,7 @@ class GetBudovyTool extends Tool
     {
         return [
             ...$this->freshnessOutputSchema($schema),
-            'count' => $schema->integer()
+            'total' => $schema->integer()
                 ->description('How many buildings were returned.'),
             'buildings' => $schema->array()
                 ->description('Buildings matching the filters.')
@@ -74,7 +74,7 @@ class GetBudovyTool extends Tool
                     //       and it could provide better data as time goes on. probably needs a separate tool tho.
                     //       purely an idea for now.
                     'code' => $schema->string()->description('Building abbreviation, e.g. "UL".'),
-                    'campus' => $schema->string()->description('Campus/location label. Not yet decoded — currently the raw STAG code.'),
+                    'campus' => $schema->string()->description('Campus name, or the raw STAG campus code when it is not a known one.'),
                     'map_url' => $schema->anyOf([$schema->string()])->description('Directions link, or null.')->nullable(),
                     'address' => $schema->object([
                         'city' => $schema->anyOf([$schema->string()])->description('City, or null.')->nullable(),
@@ -102,6 +102,10 @@ class GetBudovyTool extends Tool
             'city' => ['string', 'nullable'],
             'campus' => ['string', 'nullable'],
             'address' => ['string', 'nullable'],
+        ], [
+            'city' => 'city must be a city name as text, e.g. "'.City::values()[0].'".',
+            'campus' => 'campus must be a campus name or STAG campus code as text, e.g. "'.Location::labels()[0].'".',
+            'address' => 'address must be text to look for in the street, house number or city.',
         ]);
 
         // An agent has no reason to know the user's city unless told, so an
@@ -124,7 +128,7 @@ class GetBudovyTool extends Tool
 
         return Response::structured([
             ...$this->freshness($budovy),
-            'count' => count($items),
+            'total' => count($items),
             'buildings' => array_map($this->toBuilding(...), $items),
         ]);
     }

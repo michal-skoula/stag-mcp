@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * Shared fixtures for everything under `app/Services/Grades` and
- * `GetZnamkyTool`. Centralised as static methods (rather than the usual
+ * `GetGradesTool`. Centralised as static methods (rather than the usual
  * per-file free functions) because several test files need `stagZnamka()`-
  * shaped rows, and PHP fatals on redeclaring a same-named global function
  * once two such files load in the same run.

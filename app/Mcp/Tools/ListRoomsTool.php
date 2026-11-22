@@ -20,8 +20,8 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('list-rooms')]
-#[Title('List Rooms')]
-#[Description('List university rooms, offices, lecture halls etc. by building, department, or type. Results are paged; use offset to see more than the first count rows.')]
+#[Title('List rooms')]
+#[Description('University rooms (místnosti): lecture halls, classrooms, labs and offices, with type, capacity, floor, owning department, address and coordinates. Call it to find where a room is, how big it is, or which rooms a building or department has. Every filter is optional; building and room are exact codes, e.g. building "UC" and room "336" for UC336. Paged with count and offset.')]
 #[IsReadOnly]
 class ListRoomsTool extends Tool
 {
@@ -36,18 +36,18 @@ class ListRoomsTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'building_shortcode' => $schema->string()
-                ->description('Building abbreviation to filter by, e.g. "UL", "UC".'),
-            'room_number' => $schema->string()
-                ->description('Room number to filter by, e.g. "409".'),
+            'building' => $schema->string()
+                ->description('Building abbreviation, e.g. "UL" or "UC". Exact match.'),
+            'room' => $schema->string()
+                ->description('Room number within the building, e.g. "409". Exact match.'),
             'department' => $schema->string()
                 ->description('Department abbreviation to filter by, e.g. "KIV". STAG matches the abbreviation only, so the full workplace name returns nothing.'),
             'room_type' => $schema->string()
                 ->description('Room type to filter by.')
                 ->enum(RoomType::class),
-            'only_valid' => $schema->boolean()
-                ->description('Exclude rooms taken out of service, meaning their end-of-operation date has passed. Set false to include them, which adds roughly 485 rooms university-wide.')
-                ->default(true),
+            'include_retired' => $schema->boolean()
+                ->description('Also return rooms taken out of service, whose end-of-operation date has passed. Adds roughly 485 rooms university-wide.')
+                ->default(false),
             ...$this->paginationInputSchema($schema, 'rooms'),
         ];
     }
@@ -62,9 +62,9 @@ class ListRoomsTool extends Tool
             'rooms' => $schema->array()
                 ->description('Matching rooms.')
                 ->items($schema->object([
-                    'building_shortcode' => $schema->string()->description('Building abbreviation.'),
-                    'room_number' => $schema->string()->description('Room number.'),
-                    'room_type' => $schema->string()->description('Room type.'),
+                    'building' => $schema->string()->description('Building abbreviation.'),
+                    'room' => $schema->string()->description('Room number.'),
+                    'type' => $schema->string()->description('Room type, in Czech as STAG names it, e.g. "Učebna".'),
                     'capacity' => $schema->integer()->description('Seating capacity.'),
                     'floor' => $schema->string()->description('Floor.'),
                     'workplace' => $schema->string()->description('Full name of the workplace the room belongs to.'),
@@ -87,12 +87,19 @@ class ListRoomsTool extends Tool
     protected function handleForStagUser(Request $request, StagClient $stag): ResponseFactory|Response
     {
         $validated = $request->validate([
-            'building_shortcode' => ['string', 'nullable'],
-            'room_number' => ['string', 'nullable'],
+            'building' => ['string', 'nullable'],
+            'room' => ['string', 'nullable'],
             'department' => ['string', 'nullable'],
             'room_type' => ['string', 'nullable', new Enum(RoomType::class)],
-            'only_valid' => ['boolean', 'nullable'],
+            'include_retired' => ['boolean', 'nullable'],
             ...$this->paginationRules(),
+        ], [
+            'building' => 'building must be a building abbreviation, e.g. "UL".',
+            'room' => 'room must be a room number as text, e.g. "409".',
+            'department' => 'department must be a department abbreviation, e.g. "KIV".',
+            'room_type' => 'room_type must be one of: '.implode(', ', array_column(RoomType::cases(), 'value')).'.',
+            'include_retired' => 'include_retired must be true or false.',
+            ...$this->paginationMessages(),
         ]);
 
         $roomType = isset($validated['room_type'])
@@ -100,13 +107,13 @@ class ListRoomsTool extends Tool
             : null;
 
         $params = array_filter([
-            'zkrBudovy' => $validated['building_shortcode'] ?? null,
-            'cisloMistnosti' => $validated['room_number'] ?? null,
+            'zkrBudovy' => $validated['building'] ?? null,
+            'cisloMistnosti' => $validated['room'] ?? null,
             'pracoviste' => $validated['department'] ?? null,
             'typ' => $roomType,
         ], fn ($value) => $value !== null);
 
-        $params['jenPlatne'] = $this->toStagBoolean($validated['only_valid'] ?? true);
+        $params['jenPlatne'] = $this->toStagBoolean(! ($validated['include_retired'] ?? false));
 
         $rooms = $stag->get('mistnost/getMistnostiInfo', $params);
 
@@ -127,9 +134,9 @@ class ListRoomsTool extends Tool
     private function toRoom(array $row): array
     {
         return [
-            'building_shortcode' => $row['zkrBudovy'],
-            'room_number' => $row['cisloMistnosti'],
-            'room_type' => $row['typ'],
+            'building' => $row['zkrBudovy'],
+            'room' => $row['cisloMistnosti'],
+            'type' => $row['typ'],
             'capacity' => $row['kapacita'],
             'floor' => $row['podlazi'],
             'workplace' => $row['pracoviste'],

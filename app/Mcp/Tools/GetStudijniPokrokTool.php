@@ -22,7 +22,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('get-studijni-pokrok')]
 #[Title('Get Studijni Pokrok')]
-#[Description('What the caller still needs to finish their study plan: for every block of the plan, the credits and subjects earned, in progress and booked for next year, whether the block\'s rule is met, and which subjects are still missing or available to pick. Pass certificate_id (from list-certifikaty) to measure the caller\'s passed subjects against a certificate programme instead, e.g. "how close am I to the Podnikání v IT certificate". No grades or GPA here: use get-znamky for those.')]
+#[Description('What the caller still needs to finish their study plan: for every block of the plan, the credits and subjects earned, in progress and booked for next year, whether the block\'s rule is met, and which subjects are still missing or available to pick. Pass certificate_id (from list-certifikaty) to measure the caller\'s passed subjects against a certificate programme instead, e.g. "how close am I to the Podnikání v IT certificate". No grades or GPA here: use get-grades for those.')]
 #[IsReadOnly]
 class GetStudijniPokrokTool extends Tool
 {
