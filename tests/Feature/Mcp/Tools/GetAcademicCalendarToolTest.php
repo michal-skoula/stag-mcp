@@ -178,7 +178,7 @@ it('outputs dates as ISO', function () {
         ->assertDontSee('21.9.2026');
 });
 
-it('returns an empty list without erroring for a bogus year', function () {
+it('returns an empty list without erroring for a year STAG has no schedule for', function () {
     Http::fake([
         STAG_GET_AKTUALNI_OBDOBI_INFO => Http::response([
             'obdobi' => 'ZR',
@@ -190,9 +190,19 @@ it('returns an empty list without erroring for a bogus year', function () {
     ]);
 
     StagMcpServer::actingAs(User::factory()->create())
-        ->tool(GetAcademicCalendarTool::class, ['year' => '1900'])
+        ->tool(GetAcademicCalendarTool::class, ['year' => '2090'])
         ->assertOk()
         ->assertHasNoErrors()
         ->assertSee('"total":0')
         ->assertSee('"entries":[]');
+});
+
+it('names the argument and what it accepts when the year is not one', function () {
+    Http::fake();
+
+    StagMcpServer::actingAs(User::factory()->create())
+        ->tool(GetAcademicCalendarTool::class, ['year' => '2025/2026'])
+        ->assertHasErrors(['year must be an academic year as its starting year, e.g. 2025 for 2025/2026.']);
+
+    Http::assertNothingSent();
 });
